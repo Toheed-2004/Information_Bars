@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Data files — raw data and processed outputs are not version-controlled
+data/raw_data/**
+!data/raw_data/.gitkeep
+data/processed_bars/**
+!data/processed_bars/.gitkeep
+data/comparison_results/**
+!data/comparison_results/.gitkeep
+
+# State / cache
+*.json
+!config/*.json
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Dotenv
+.env

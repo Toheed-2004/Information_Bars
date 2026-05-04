@@ -1,0 +1,1 @@
+"""Information bar generation pipeline."""

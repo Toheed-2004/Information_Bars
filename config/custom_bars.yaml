@@ -1,0 +1,32 @@
+# config/custom_bars.yaml
+# ============================================================
+# Information Bar Configuration
+# ============================================================
+# Controls which bar types are generated for each exchange/symbol.
+# Set any bar type to false to skip it.
+# ============================================================
+
+project:
+  name: information_bars_research
+  version: "1.0.0"
+  timezone: UTC
+
+exchanges:
+  binance:
+    symbols:
+      btc:
+        bars:
+          dollar:     true
+          volume:     true
+          volatility: true
+          range:      true
+          renko:      true
+          hybrid:     true
+      eth:
+        bars:
+          dollar:     true
+          volume:     true
+          volatility: true
+          range:      true
+          renko:      true
+          hybrid:     true
