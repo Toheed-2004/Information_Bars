@@ -4,6 +4,9 @@ BaseBar — abstract base class for all bar types.
 Concrete (shared) methods live here; type-specific logic is abstract.
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import numpy as np
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta

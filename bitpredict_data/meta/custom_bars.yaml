@@ -1,0 +1,385 @@
+# ============================================================================
+# bitpredict — BARS DATA CONFIGURATION
+# ============================================================================
+#
+# PURPOSE
+# -------
+# This file defines bar collection settings for each exchange and symbol.
+# These settings determine which bar types (dollar, volatility, volume)
+# are collected for each symbol at various timeframes.
+#
+# It is parsed by a Python ingestion script to populate ONE table:
+#
+#   meta.custom_bars
+#
+# Table shape:
+#   id | exchange | symbol  | bars (JSONB)
+#
+# This file is READ-ONLY in production.
+# Any change here alters system-wide bar data collection.
+# ============================================================================
+
+project:
+  name: bitpredict
+  environment: production
+  version: "1.0.0"
+  timezone: UTC
+
+# ---------------------------------------------------------------------------
+# BARS DATA DEFINITIONS
+# ---------------------------------------------------------------------------
+#
+# STRUCTURE OVERVIEW
+# ------------------
+# exchanges
+# └── exchange
+#     └── symbols
+#         └── symbol
+#             └── bars          -> Bar types dictionary
+#                 ├── dollar      -> Dollar bars (true/false)
+#                 ├── volatility  -> Volatility bars (true/false)
+#                 ├── volume      -> Volume bars (true/false)
+#                 ├── range       -> Range bars (true/false)
+#                 ├── renko       -> Renko bars (true/false)
+#                 └── hybrid      -> Hybrid bars (true/false)
+#
+# CONTROL MECHANISM
+# -----------------
+# Control is at the symbol level via the 'enabled' flag.
+# Set enabled: false to disable a symbol without deleting its config.
+#
+# Bars are stored as JSONB in the database, one row per symbol.
+# No row explosion occurs.
+#
+# BAR TYPES
+# ---------
+# 1. DOLLAR BARS:
+#    - Created when a predefined dollar amount is traded.
+#    - Example: 1,000,000 USD traded = 1 dollar bar.
+#    - Useful for normalizing across different price levels.
+#
+# 2. VOLATILITY BARS:
+#    - Created when the price moves by a specified percentage.
+#    - Example: 0.5% price movement = 1 volatility bar.
+#    - Captures market regimes and volatility clustering.
+#
+# 3. VOLUME BARS:
+#    - Created when a predefined volume is traded.
+#    - Example: 100 BTC traded = 1 volume bar.
+#    - Captures liquidity and market depth.
+#
+# 4. RANGE BARS:
+#    - Created when price moves by a fixed range amount, ignoring time.
+#    - Useful for measuring pure price movement.
+#
+# 5. RENKO BARS:
+#    - Bricks built based on price movement, ignoring time.
+#    - Example: each brick represents a $50 price change.
+#    - Filters out market noise, focuses on trend direction.
+#
+# 6. HYBRID BARS:
+#    - Combine multiple criteria (volume, volatility, time) to form bars.
+#    - Example: create a bar when either volume threshold or time interval is reached.
+#    - Provides adaptive bar formation for multi-dimensional market events.
+#
+# Each bar type can be enabled/disabled independently per symbol.
+# ---------------------------------------------------------------------------
+
+exchanges:
+  # =========================
+  # BINANCE
+  # =========================
+  binance:
+    symbols:
+      birb:
+        bars:
+          dollar: true
+          volatility: true
+          volume: true
+          range: true
+          renko: true
+          hybrid: true
+
+      btc:
+        bars:
+          dollar: true
+          volatility: true
+          volume: true
+          range: true
+          renko: true
+          hybrid: true
+
+      eth:
+        bars:
+          dollar: true
+          volatility: true
+          volume: true
+          range: true
+          renko: true
+          hybrid: true
+
+      sol:
+        bars:
+          dollar: true
+          volatility: true
+          volume: true
+          range: true
+          renko: true
+          hybrid: true
+
+      doge:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      bnb:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      xrp:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      ada:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+  # =========================
+  # BYBIT
+  # =========================
+  bybit:
+    symbols:
+      btc:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      eth:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      sol:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      doge:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      bnb:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      xrp:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+  # =========================
+  # KRAKEN
+  # =========================
+  kraken:
+    symbols:
+      btc:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      eth:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      sol:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+
+      doge:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      xrp:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+  # =========================
+  # METATRADER5
+  # =========================
+  metatrader5:
+    symbols:
+      btc:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      eth:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      sol:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      doge:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+  # =========================
+  # HYPERLIQUID
+  # =========================
+  hyperliquid:
+    symbols:
+      btc:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      eth:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+
+      sol:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      doge:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      avax:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+      matic:
+        bars:
+          dollar: false
+          volatility: false
+          volume: false
+          range: false
+          renko: false
+          hybrid: false
+
+# ============================================================================
+# BAR TYPE CONFIGURATION DETAILS
+# ============================================================================
+#
+# Note: The actual parameters for each bar type (dollar amount,
+# volatility threshold, volume threshold) are configured in the
+# data collection system, not in this metadata file.
+#
+# This file only controls WHICH bar types are collected for each symbol.
+#
+# For example:
+# - Dollar bars might be configured as: $1M, $5M, $10M thresholds
+# - Volatility bars might be: 0.1%, 0.5%, 1.0% thresholds
+# - Volume bars might be: 10 BTC, 50 BTC, 100 BTC thresholds
+#
+# These thresholds are set in the bar generation pipeline configuration.
+# ============================================================================

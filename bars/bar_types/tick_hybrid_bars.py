@@ -73,6 +73,9 @@ process_chunk(prices, quantities, timestamps_ms, is_buyer_maker,
               -> (bars, market_params, open_bar_data, leftover)
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import gc
 from collections import deque
 from datetime import datetime, timezone
@@ -87,7 +90,8 @@ from common.constants import (
     EXTREME_THRESHOLD_MULTIPLIER,
 )
 
-from tick_volatility import (
+from .base import BaseBar as HybridBar  # type alias: tick_hybrid uses same interface as BaseBar
+from .tick_volatility_bars import (
     _ms_to_dt,
     _get_precision,
     _ticks_to_minute_ohlcv_for_calibration,

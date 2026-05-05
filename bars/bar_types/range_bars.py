@@ -2,6 +2,9 @@
 RangeBar — creates bars when the accumulated sum of minute price ranges (high - low)
 reaches the EMA-adapted target.
 """
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import numpy as np
 from typing import Dict, Any, List
 from datetime import datetime

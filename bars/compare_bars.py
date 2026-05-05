@@ -73,7 +73,44 @@ from scipy.stats import mannwhitneyu
 from statsmodels.tsa.stattools import adfuller, kpss, bds
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 
-from bitpredict.common.db.services.data import read_ohlcv
+# read_ohlcv — CSV fallback for standalone use (no bitpredict DB required).
+# Reads pre-exported time bar CSVs from data_dir.
+# File naming convention: {exchange}_{symbol}_{timeframe}.csv
+# e.g. binance_btc_1h.csv, binance_btc_4h.csv
+def read_ohlcv(exchange, symbol, timeframe, bar_type=None,
+               start_date=None, end_date=None,
+               return_timestamp=False, columns=None,
+               **kwargs):
+    """CSV-based replacement for bitpredict DB read_ohlcv."""
+    import pandas as pd
+    from pathlib import Path
+    # Look in the same directory as the bar CSVs (data_dir is passed via load_time_bars)
+    # We search common locations relative to this script
+    candidates = [
+        Path(__file__).parent / "data" / f"{exchange}_{symbol}_{timeframe}.csv",
+        Path(__file__).parent.parent / "data" / "raw_data" / f"{exchange}_{symbol}_{timeframe}.csv",
+        Path("data/raw_data") / f"{exchange}_{symbol}_{timeframe}.csv",
+        Path("data/raw_data") / f"binance_btc_{timeframe}.csv",
+    ]
+    for path in candidates:
+        if path.exists():
+            df = pd.read_csv(path, low_memory=False)
+            if columns:
+                present = [c for c in columns if c in df.columns]
+                df = df[present] if present else df
+            if start_date:
+                dt_col = next((c for c in df.columns if "datetime" in c.lower() or "timestamp" in c.lower()), None)
+                if dt_col:
+                    df[dt_col] = pd.to_datetime(df[dt_col], utc=True, errors="coerce")
+                    df = df[df[dt_col] >= pd.Timestamp(start_date, tz="UTC")]
+            if end_date:
+                dt_col = next((c for c in df.columns if "datetime" in c.lower() or "timestamp" in c.lower()), None)
+                if dt_col:
+                    df = df[df[dt_col] <= pd.Timestamp(end_date, tz="UTC")]
+            return df
+    print(f"  [TIME BAR] CSV not found for {exchange} {symbol} {timeframe}. "
+          f"Place {exchange}_{symbol}_{timeframe}.csv in data/raw_data/")
+    return None
 
 warnings.filterwarnings("ignore")
 
@@ -2536,44 +2573,46 @@ def _add_timebar_to_interactive(fig, c: "pd.DataFrame", tc: dict, la: str, lb: s
 # ── Bar type registry ─────────────────────────────────────────────────────────
 BAR_TYPES = {
     "dollar": (
-        "1minute_dollar_bars.csv",
-        "tick_dollar_bars.csv",
+        "binance_btc_dollar_minute_bars.csv",
+        "binance_btc_dollar_tick_bars.csv",
         "Minute Dollar",
         "Tick Dollar",
     ),
     "volume": (
-        "1minute_volume_bars.csv",
-        "tick_volume_bars.csv",
+        "binance_btc_volume_minute_bars.csv",
+        "binance_btc_volume_tick_bars.csv",
         "Minute Volume",
         "Tick Volume",
     ),
     "volatility": (
-        "1minute_volatility_bars.csv",
-        "tick_volatility_bars.csv",
+        "binance_btc_volatility_minute_bars.csv",
+        "binance_btc_volatility_tick_bars.csv",
         "Minute Volatility",
         "Tick Volatility",
     ),
     "range": (
-        "1minute_range_bars.csv",
-        "tick_range_bars.csv",
+        "binance_btc_range_minute_bars.csv",
+        "binance_btc_range_tick_bars.csv",
         "Minute Range",
         "Tick Range",
     ),
     "renko": (
-        "1minute_renko_bars.csv",
-        "tick_renko_bars.csv",
+        "binance_btc_renko_minute_bars.csv",
+        "binance_btc_renko_tick_bars.csv",
         "Minute Renko",
         "Tick Renko",
     ),
     "hybrid": (
-        "1minute_hybrid_bars.csv",
-        "tick_hybrid_bars.csv",
+        "binance_btc_hybrid_minute_bars.csv",
+        "binance_btc_hybrid_tick_bars.csv",
         "Minute Hybrid",
         "Tick Hybrid",
     ),
 }
 
-DEFAULT_DATA_DIR = Path(r"D:\bitpredict\data\custom_bars\bar_types\bars_analysis\data")
+DEFAULT_DATA_DIR = (
+    Path(__file__).resolve().parent.parent / "data" / "processed_bars"
+)
 
 
 def _run_one(
@@ -3628,7 +3667,10 @@ def main():
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
-    out_dir = Path(args.out_dir) if args.out_dir else data_dir / "comparisons"
+    out_dir = (
+    Path(args.out_dir) if args.out_dir
+    else Path(__file__).resolve().parents[1] / "data" / "comparison_results"
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_types = args.types if args.types else list(BAR_TYPES.keys())

@@ -25,6 +25,9 @@ No overflow carry-forward: the closing tick is consumed whole into the bar.
 bar_size may exceed target; the next bar starts at zero accumulation.
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import gc
 from collections import deque
 from datetime import datetime, timezone

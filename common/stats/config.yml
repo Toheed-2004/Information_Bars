@@ -1,0 +1,79 @@
+# =============================================================================
+# Backtest Configuration
+# The `backtest:` section can be copied directly into any module that runs a
+# backtest. The `bar_data:`, `minute_data:`, and `test:` sections are specific
+# to this test script.
+# =============================================================================
+
+backtest:
+  starting_balance: 10000
+  position_size: 1          # Fraction of balance per trade (0.0 - 1.0)
+  leverage: 1.0
+  transaction_fee: 0.05       # Fee as a percentage (e.g. 0.05 = 0.05%)
+  slippage: 0.0               # Slippage as a percentage
+  create_ledger: true
+  zero_signal_mode: close_position   # hold_position | close_position
+
+  risk_management:
+
+    # Static (fixed-percentage) TP/SL
+    static:
+      enabled: false
+      take_profit: 2.0        # percentage
+      stop_loss: 1.0          # percentage
+
+    # Time-based stop — close position after a given duration
+    time_stop:
+      enabled: false
+      max_duration: "12h"     # e.g. "30m", "2h", "1d" — converted to bar count at runtime
+
+    # ATR-based stop loss (and optional take profit)
+    atr_stop:
+      enabled: false
+      period: 14              # ATR lookback period (bars)
+      multiplier: 2.0         # SL = ATR * multiplier
+      tp_enabled: true
+      tp_multiplier: 1.0      # TP = ATR * tp_multiplier (only if tp_enabled)
+
+    # Chandelier stop (ATR-based trailing stop)
+    chandelier_stop:
+      enabled: false
+      period: 22              # ATR lookback period (bars)
+      multiplier: 3.0         # Trail distance = ATR * multiplier
+      tp_enabled: true
+      tp_multiplier: 4.0      # TP = ATR * tp_multiplier (only if tp_enabled)
+
+    # Percentage-based trailing stop
+    trailing_stop:
+      enabled: false
+      activation_pct: 1.0     # Activate trailing only after price moves this % in favor (0 = immediate)
+      trail_pct: 0.5          # Trail distance as a percentage
+
+
+# -----------------------------------------------------------------------------
+# Bar data — used for signal generation (can be any bar type)
+# Start date should be early enough to cover ATR lookback if atr_stop is used,
+# so that calculate_atr_for_trailing_stop does not need to re-fetch from the DB.
+# -----------------------------------------------------------------------------
+bar_data:
+  exchange: binance
+  symbol: btc
+  bar_type: dollar
+  timeframe: 12h               # any bar type: 1m, 5m, 30m, 1h, 4h, 1d, dollar, volume, etc.
+  start_date: "2025-01-01 00:00:00"
+
+
+# -----------------------------------------------------------------------------
+# Minute data — always 1m, used for accurate intra-bar stop simulation in VBT
+# -----------------------------------------------------------------------------
+minute_data:
+  exchange: binance
+  symbol: btc
+  start_date: "2025-01-01 00:00:00"
+
+
+# -----------------------------------------------------------------------------
+# Test-script-specific settings
+# -----------------------------------------------------------------------------
+test:
+  signal_frequency: 1         # Use every N bars for signals (1 = every bar, N = subsample)

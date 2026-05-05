@@ -5,32 +5,24 @@ Entry point for information bar generation.
 
 Usage
 -----
-    python bars/main.py --help
+    # All minute-level bar types
+    python bars/main.py --source minute --types all \
+        --minute-csv data/raw_data/1minute_ohlcv.csv
 
-    # Generate all minute-level bar types for BTC
-    python bars/main.py \\
-        --source minute \\
-        --types all \\
-        --minute-csv data/raw_data/1minute_btcusdt_2024.csv
+    # All tick-level bar types
+    python bars/main.py --source tick --types all \
+        --tick-csv data/raw_data/merged_tickdata.csv
 
-    # Generate tick-level dollar bars
-    python bars/main.py \\
-        --source tick \\
-        --types dollar \\
-        --tick-csv   data/raw_data/btcusdt_aggTrades_2024.csv \\
-        --minute-csv data/raw_data/1minute_btcusdt_2024.csv
+    # Specific types
+    python bars/main.py --source minute --types dollar volatility \
+        --minute-csv data/raw_data/1minute_ohlcv.csv
 
-    # Generate multiple specific types
-    python bars/main.py \\
-        --source minute \\
-        --types dollar volatility hybrid \\
-        --minute-csv data/raw_data/1minute_btcusdt_2024.csv
+    # If --types not provided, all six bar types are processed
 """
 import sys
 import time
 from pathlib import Path
 
-# Make common/ importable when running from repo root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.logging import setup_logging, get_logger
@@ -46,7 +38,7 @@ def main() -> None:
     parser = build_parser()
     args   = parser.parse_args()
 
-    bar_types = ALL_BAR_TYPE_NAMES if args.types == ["all"] else args.types
+    bar_types  = ALL_BAR_TYPE_NAMES if not args.types or args.types == ["all"]                  else args.types
     output_dir = Path(args.output_dir)
 
     logger.info("=" * 60)
@@ -65,43 +57,38 @@ def main() -> None:
         try:
             if args.source == "minute":
                 if not args.minute_csv:
-                    logger.error("--minute-csv is required for source=minute")
+                    logger.error("--minute-csv is required for --source minute")
                     sys.exit(1)
                 bars = process_minute_bars(
-                    bar_type    = bar_type,
-                    minute_csv  = args.minute_csv,
-                    output_dir  = output_dir,
-                    exchange    = args.exchange,
-                    symbol      = args.symbol,
-                    resume      = not args.no_resume,
-                )
-            else:  # tick
-                if not args.tick_csv or not args.minute_csv:
-                    logger.error(
-                        "--tick-csv and --minute-csv are both required for source=tick"
-                    )
-                    sys.exit(1)
-                bars = process_tick_bars(
                     bar_type   = bar_type,
-                    tick_csv   = args.tick_csv,
                     minute_csv = args.minute_csv,
                     output_dir = output_dir,
                     exchange   = args.exchange,
                     symbol     = args.symbol,
                     resume     = not args.no_resume,
                 )
+            else:  # tick
+                if not args.tick_csv:
+                    logger.error("--tick-csv is required for --source tick")
+                    sys.exit(1)
+                bars = process_tick_bars(
+                    bar_type   = bar_type,
+                    tick_csv   = args.tick_csv,
+                    output_dir = output_dir,
+                    exchange   = args.exchange,
+                    symbol     = args.symbol,
+                )
 
-            elapsed = time.time() - t1
-            logger.info(
-                "Done %-12s : %d bars in %.1fs", bar_type, len(bars), elapsed
-            )
+            logger.info("Done %-12s : %d bars in %.1fs",
+                        bar_type, len(bars), time.time() - t1)
             total_bars += len(bars)
 
         except Exception:
             logger.exception("Error processing %s — skipping.", bar_type)
 
     logger.info("=" * 60)
-    logger.info("COMPLETE: %d bars total in %.1fs", total_bars, time.time() - t0)
+    logger.info("COMPLETE: %d bars total in %.1fs",
+                total_bars, time.time() - t0)
     logger.info("=" * 60)
 
 

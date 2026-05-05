@@ -1,6 +1,9 @@
 """
 VolatilityBar — creates bars when accumulated close-to-close % volatility reaches the EMA target.
 """
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import numpy as np
 from typing import Dict, Any, List, Optional
 from datetime import datetime

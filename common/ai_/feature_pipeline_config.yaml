@@ -1,0 +1,53 @@
+# ============================================================================
+# ML FEATURE ENGINEERING PIPELINE - CONFIGURATION
+# ============================================================================
+
+# Features to calculate ('all' or list of feature names)
+features: "all"
+
+# ============================================================================
+# ADAPTIVE FRACTIONAL DIFFERENCING (AFD)
+# ============================================================================
+afd:
+  enabled: true
+  significance: 0.05  # P-value threshold for stationarity
+  max_d: 1.0  # Maximum differencing order
+  step: 0.1  # Step size for searching optimal d
+
+# ============================================================================
+# GAUSSIAN RANK TRANSFORM
+# ============================================================================
+gaussian_transform:
+  enabled: true
+  window: 252  # Rolling window size (1 year for daily data)
+  n_quantiles: 1000  # Number of quantiles for transformation
+
+# ============================================================================
+# FEATURE NEUTRALIZATION (REMOVE BETA)
+# ============================================================================
+neutralization:
+  enabled: true
+  against: ["close"]  # Neutralize against these columns (market returns)
+  # For crypto, you might want: ["close"] for BTC beta removal
+  # Or ["close", "volume"] for multi-factor neutralization
+
+# ============================================================================
+# INFORMATION CLUSTERING & EIGEN-FEATURES
+# ============================================================================
+clustering:
+  enabled: true
+  method: "correlation"  # Options: correlation, euclidean
+  distance_threshold: 0.3  # Distance threshold for clustering
+  linkage: "average"  # Linkage method: average, complete, single, ward
+  pca_components: 1  # Number of PCA components per cluster (1 = PC1 only)
+
+# ============================================================================
+# OUTPUT SETTINGS
+# ============================================================================
+output:
+  save_results: true
+  output_dir: "common/ai/results/ml"
+  formats:
+    json: true  # Save metadata as JSON
+    csv: true  # Save eigen features as CSV
+    pickle: true  # Save full pipeline as pickle

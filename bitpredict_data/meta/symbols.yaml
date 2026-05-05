@@ -1,0 +1,170 @@
+# ============================================================================
+# bitpredict — SYMBOLS MASTER REGISTRY
+# ============================================================================
+#
+# PURPOSE
+# -------
+# This file defines ALL tradable symbols supported by the system.
+#
+# It is parsed by a Python ingestion script to populate ONE table:
+#
+#   meta.symbols
+#
+# Table shape:
+#   id | exchange | symbol | enabled
+#
+# This is the MASTER table. Other tables (ohlcv, bars) reference this via
+# foreign keys. Enabling/disabling a symbol here affects all dependent tables.
+#
+# This file is READ-ONLY in production.
+# Any change here alters system-wide symbol availability.
+# ============================================================================
+
+project:
+  name: bitpredict
+  environment: production
+  version: "1.0.0"
+  timezone: UTC
+
+# ---------------------------------------------------------------------------
+# SYMBOL DEFINITIONS
+# ---------------------------------------------------------------------------
+#
+# STRUCTURE OVERVIEW
+# ------------------
+# exchanges
+# └── exchange
+#     └── symbols
+#         └── symbol
+#             └── enabled       -> Per-symbol control (boolean)
+#
+# CONTROL MECHANISM
+# -----------------
+# Control is at the symbol level only via the 'enabled' flag.
+# Set enabled: false to disable a symbol without deleting its config.
+#
+# When a symbol is enabled here, it can be used by ohlcv and bars tables.
+# When disabled, all queries filtering by enabled will exclude it.
+# ---------------------------------------------------------------------------
+
+exchanges:
+  # =========================
+  # BINANCE
+  # =========================
+  binance:
+    symbols:
+      # birb:
+      #   enabled: false
+
+      btc:
+        enabled: true
+
+      eth:
+        enabled: false
+
+      # sol:
+      #   enabled: false
+
+      # doge:
+      #   enabled: false
+
+      # bnb:
+      #   enabled: false
+
+      # xrp:
+      #   enabled: false
+
+      # ada:
+      #   enabled: false
+
+      # zama:
+      #   enabled: false
+
+      # trump:
+      #   enabled: false
+
+  # # =========================
+  # # BYBIT
+  # # =========================
+  bybit:
+    symbols:
+      btc:
+        enabled: false
+
+  #     eth:
+  #       enabled: false
+
+  #     sol:
+  #       enabled: false
+
+  #     doge:
+  #       enabled: false
+
+  #     bnb:
+  #       enabled: false
+
+  #     xrp:
+  #       enabled: false
+
+  #     brev:
+  #       enabled: false
+
+  # # =========================
+  # # KRAKEN
+  # # =========================
+  # kraken:
+  #   symbols:
+  #     btc:
+  #       enabled: false
+
+  #     eth:
+  #       enabled: false
+
+  #     sol:
+  #       enabled: false
+
+  #     doge:
+  #       enabled: false
+
+  #     xrp:
+  #       enabled: false  # Disabled pending Kraken API integration
+
+  # # =========================
+  # # METATRADER5
+  # # =========================
+  # metatrader5:
+  #   symbols:
+  #     btc:
+  #       enabled: false
+
+  #     eth:
+  #       enabled: false
+
+  #     sol:
+  #       enabled: false
+
+  #     doge:
+  #       enabled: false
+
+  # # =========================
+  # # HYPERLIQUID
+  # # =========================
+  # hyperliquid:
+  #   symbols:
+  #     btc:
+  #       enabled: false
+
+  #     eth:
+  #       enabled: false
+
+  #     sol:
+  #       enabled: false
+
+  #     doge:
+  #       enabled: false
+
+  #     avax:
+  #       enabled: false
+
+  #     matic:
+  #       enabled: false

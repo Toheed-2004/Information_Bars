@@ -1,0 +1,458 @@
+# ============================================================================
+# bitpredict — META SYMBOL REGISTRY
+# ============================================================================
+#
+# PURPOSE
+# -------
+# This file defines ALL tradable symbols supported by the system and the
+# time resolutions (bars) available for each symbol.
+#
+# It is parsed by a Python ingestion script to populate ONE table:
+#
+#   meta.symbols
+#
+# Table shape:
+#   id | exchange | symbol | enabled | bars | timeframes (JSONB)
+#
+# This file is READ-ONLY in production.
+# Any change here alters system-wide ingestion, resampling, and signals.
+# ============================================================================
+
+project:
+  name: bitpredict
+  environment: production
+  version: "1.0.0"
+  timezone: UTC
+
+# ---------------------------------------------------------------------------
+# SYMBOL DEFINITIONS
+# ---------------------------------------------------------------------------
+#
+# STRUCTURE OVERVIEW
+# ------------------
+# exchanges
+# └── exchange
+#     └── symbols
+#         └── symbol
+#             ├── enabled       -> Per-symbol control (boolean)
+#             ├── bars          -> Trading pairs dictionary (e.g., {usd: false})
+#             └── timeframes -> Available timeframes dictionary (e.g., {})
+#
+# CONTROL MECHANISM
+# -----------------
+# Control is at the symbol level only via the 'enabled' flag.
+# Set  to disable a symbol without deleting its config.
+#
+# timeframes and bars are stored AS-IS into the database as JSONB.
+# No row explosion. One symbol = one DB row.
+#
+# TIME HORIZON NOTATION
+# ---------------------
+# Valid suffixes: m (minutes), h (hours), d (days), w (weeks), M (months)
+# Examples:
+#   1m  -> 1 minute bars
+#   15m -> 15 minute bars
+#   1h  -> 1 hour bars
+#   4h  -> 4 hour bars
+#   1d  -> 1 day bars
+#
+# Set to false to disable a specific timeframe without removing it.
+# ---------------------------------------------------------------------------
+
+exchanges:
+  # =========================
+  # BINANCE
+  # =========================
+  binance:
+    symbols:
+      birb:
+        timeframes:
+          1d: false
+      btc:
+        timeframes:
+          15m: true
+          30m: true
+          1h: true
+          2h: true
+          3h: true
+          4h: true
+          6h: true
+          8h: true
+          12h: true
+          1d: true
+
+      eth:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      sol:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      doge:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      bnb:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      xrp:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      ada:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+  # =========================
+  # BYBIT
+  # =========================
+
+  bybit:
+    symbols:
+      btc: 
+        timeframes:
+          15m: true
+          30m: false
+          1h: true
+          2h: false
+          3h: false
+          4h: true
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      eth:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      sol: 
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      doge:    
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      bnb:    
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      xrp:    
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+
+  # =========================
+  # KRAKEN
+  # =========================
+
+  kraken:
+    symbols:
+      btc:    
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      eth:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      sol:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      doge:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      xrp:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+  # =========================
+  # METATRADER
+  # =========================
+
+  metatrader5:
+    symbols:
+      btc:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      eth:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      sol:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      doge:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+  # =========================
+  # HYPERLIQUID
+  # =========================
+
+  hyperliquid:
+    symbols:
+      btc:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      eth:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      sol:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      doge:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+  
+      avax:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false
+
+      matic:
+        timeframes:
+          15m: false
+          30m: false
+          1h: false
+          2h: false
+          3h: false
+          4h: false
+          6h: false
+          8h: false
+          12h: false
+          1d: false

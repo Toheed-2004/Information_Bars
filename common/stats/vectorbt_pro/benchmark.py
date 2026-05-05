@@ -1,0 +1,3 @@
+from ..shared.benchmark import calculate_benchmark_analysis, _empty_benchmark_analysis
+
+_get_empty_benchmark_analysis = _empty_benchmark_analysis

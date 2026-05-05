@@ -6,6 +6,9 @@ Bar direction (bullish/bearish) is determined at close.  The renko_reference is
 set to the first minute's open when each new bar starts and is persisted in
 market_params["renko_reference"] so it survives state saves/restores.
 """
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import numpy as np
 from typing import Dict, Any, List, Optional
 from datetime import datetime

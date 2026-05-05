@@ -4,6 +4,11 @@ bars/bar_types/__init__.py
 Registry of all minute-level and tick-level bar type classes.
 """
 from .base import BaseBar
+from .hybrid_bars import HybridBar as TickHybridBar  
+from .volatility_bars import VolatilityBar as TickVolatilityBar
+from .volume_bars import VolumeBar as TickVolumeBar
+from .renko_bars import RenkoBar as TickRenkoBar
+from .range_bars import RangeBar as TickRangeBar
 
 # Minute-level bar classes
 from .dollar_bars     import DollarBar
@@ -15,11 +20,11 @@ from .hybrid_bars     import HybridBar
 
 # Tick-level bar classes
 from .tick_dollar_bars     import TickDollarBar
-from .tick_volume_bars     import TickVolumeBar
-from .tick_volatility_bars import TickVolatilityBar
-from .tick_range_bars      import TickRangeBar
-from .tick_renko_bars      import TickRenkoBar
-from .tick_hybrid_bars     import TickHybridBar
+# from .tick_volume_bars     import TickVolumeBar
+# from .tick_volatility_bars import TickVolatilityBar
+# from .tick_range_bars      import TickRangeBar
+# from .tick_renko_bars      import TickRenkoBar
+# from .tick_hybrid_bars     import TickHybridBar
 
 # ── Registries ────────────────────────────────────────────────────────────────
 

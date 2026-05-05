@@ -97,11 +97,15 @@ process_chunk(prices, quantities, timestamps_ms, is_buyer_maker,
 No import from tick_volatility — this module is fully self-contained.
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import gc
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
+from .base import BaseBar as RangeBar
 
 import numpy as np
 

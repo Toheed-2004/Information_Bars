@@ -1,0 +1,217 @@
+# ============================================================================
+# bitpredict — BLOCKCHAIN DATA CONFIGURATION
+# ============================================================================
+#
+# PURPOSE
+# -------
+# This file defines blockchain metric collection settings from blockchain.info API.
+# These settings determine which on-chain metrics are collected and stored in the
+# data warehouse for Bitcoin network analysis.
+#
+# It is parsed by a Python ingestion script to populate ONE table:
+#
+#   meta.blockchain
+#
+# Table shape:
+#   id | chart_name | category | enabled | start_date | end_date | created_at | updated_at
+#
+# This file is READ-ONLY in production.
+# Any change here alters system-wide blockchain data collection.
+# ============================================================================
+
+project:
+  name: bitpredict
+  environment: production
+  version: "1.0.0"
+  timezone: UTC
+
+# ---------------------------------------------------------------------------
+# BLOCKCHAIN CHARTS CONFIGURATION
+# ---------------------------------------------------------------------------
+#
+# STRUCTURE OVERVIEW
+# ------------------
+# blockchain_charts
+# └── category_name       -> Logical grouping of related metrics
+#     ├── name            -> Chart identifier from blockchain.info (string)
+#     ├── enabled         -> Include in data collection (boolean)
+#     └── comment         -> Brief description of metric (string)
+#
+# CONTROL MECHANISM
+# -----------------
+# Control is at the chart level via the 'enabled' flag.
+# Set enabled: false to skip a metric without removing its config.
+#
+# BLOCKCHAIN.INFO API
+# --------------------
+# All metrics are fetched from the blockchain.info API.
+# Chart names correspond to official blockchain.info API identifiers.
+# See: https://blockchain.info/charts
+#
+# DATA FREQUENCY
+# ---------------
+# Most metrics update daily. Some (like real-time activity) may update more frequently.
+# All historical data is available via the blockchain.info API.
+#
+# ---------------------------------------------------------------------------
+
+blockchain_charts:
+  
+  # =========================================================================
+  # CURRENCY STATISTICS
+  # =========================================================================
+  # Bitcoin market metrics and monetary supply information
+  
+  currency_stats:
+    - name: trade-volume
+      enabled: false
+      comment: Daily trade volume in USD across all exchanges
+    
+    - name: market-price
+      enabled: false
+      comment: Bitcoin market price in USD (daily closing price)
+    
+    - name: market-cap
+      enabled: false
+      comment: Bitcoin market capitalization (price × circulating supply)
+    
+    - name: total-bitcoins
+      enabled: false
+      comment: Total number of bitcoins in circulation (cumulative mined)
+  
+  # =========================================================================
+  # BLOCKCHAIN TECHNICAL METRICS
+  # =========================================================================
+  # Block-level statistics and transaction throughput
+  
+  block_details:
+    - name: blocks-size
+      enabled: false
+      comment: Total cumulative size of all blocks (GB)
+    
+    - name: avg-block-size
+      enabled: false
+      comment: Average block size in bytes (reflects congestion)
+    
+    - name: n-transactions-per-block
+      enabled: false
+      comment: Average number of transactions per block
+
+    - name: n-transactions-total
+      enabled: false
+      comment: Total cumulative number of transactions on chain
+    
+    - name: avg-confirmation-time
+      enabled: false
+      comment: Average time for transaction confirmation (minutes)
+
+    - name: median-confirmation-time
+      enabled: false
+      comment: median time for a transaction confirmation (minutes)
+  
+  # =========================================================================
+  # MINING ECONOMICS
+  # =========================================================================
+  # Network security, miner profitability, and transaction cost metrics
+  
+  mining_information:
+    - name: hash-rate
+      enabled: false
+      comment: Network hash rate (TH/s) - measure of mining power
+    
+    - name: difficulty
+      enabled: false
+      comment: Mining difficulty adjustment (higher = harder to mine)
+    
+    - name: miners-revenue
+      enabled: false
+      comment: Total miner revenue from block rewards and fees (USD)
+    
+    - name: transaction-fees
+      enabled: false
+      comment: Total transaction fees in BTC (daily aggregate)
+    
+    - name: transaction-fees-usd
+      enabled: false
+      comment: Total transaction fees in USD (daily aggregate)
+    
+    - name: cost-per-transaction-percent
+      enabled: false
+      comment: Fees as percentage of transaction value
+    
+    - name: cost-per-transaction
+      enabled: false
+      comment: Average transaction cost in USD
+  
+  # =========================================================================
+  # NETWORK ACTIVITY & ADOPTION
+  # =========================================================================
+  # Usage metrics, transaction volume, and network health indicators
+  
+  network_activity:
+    - name: n-unique-addresses
+      enabled: true
+      comment: Number of unique Bitcoin addresses with activity
+    
+    - name: n-transactions
+      enabled: true
+      comment: Daily number of confirmed transactions on chain
+    
+    - name: transactions-per-second
+      enabled: true
+      comment: Average transactions per second (throughput metric)
+    
+    - name: output-volume
+      enabled: true
+      comment: Total output volume in BTC (transaction volume)
+    
+    - name: mempool-count
+      enabled: true
+      comment: Number of unconfirmed transactions in mempool
+    
+    - name: mempool-growth
+      enabled: true
+      comment: Rate of mempool growth (transactions per second entering)
+    
+    - name: mempool-size
+      enabled: true
+      comment: Total size of mempool in bytes (network congestion indicator)
+    
+    - name: utxo-count
+      enabled: true
+      comment: Number of unspent transaction outputs (UTXO set size)
+    
+    - name: n-transactions-excluding-popular
+      enabled: true
+      comment: Transactions excluding top 100 addresses (activity metric)
+    
+    - name: estimated-transaction-volume
+      enabled: true
+      comment: Estimated transaction volume in BTC (excludes change)
+    
+    - name: estimated-transaction-volume-usd
+      enabled: true
+      comment: Estimated transaction volume in USD
+
+
+# ============================================================================
+# DATA COLLECTION SETTINGS
+# ============================================================================
+#
+# START_DATE
+# ----------
+# The historical start date for initial data backfill.
+# Format: YYYY-MM-DD
+# blockchain.info API will fetch all available data from this date onward.
+# Default (2020-01-01) represents ~11 years of Bitcoin history.
+#
+# END_DATE
+# --------
+# The end date for data collection.
+# Use "now" (default) to always collect up to the current date.
+# Specific date format: YYYY-MM-DD
+# ============================================================================
+
+settings:
+  start_date: "2010-01-01"      # Initial backfill start date (YYYY-MM-DD format)
+  end_date: now                 # End date for data fetching ("now" = current date)

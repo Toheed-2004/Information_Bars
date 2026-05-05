@@ -1,0 +1,269 @@
+# ============================================================================
+# bitpredict — MACRO ECONOMIC INDICATORS CONFIGURATION
+# ============================================================================
+#
+# PURPOSE
+# -------
+# This file defines macro economic indicator collection settings for the system.
+# These settings determine which indicators are fetched from the FRED (Federal
+# Reserve Economic Data) API and stored in the data warehouse.
+#
+# It is parsed by a Python ingestion script to populate ONE table:
+#
+#   meta.macro
+#
+# Table shape:
+#   id | indicator_key | fred_series | frequency | enabled | created_at | updated_at
+#
+# This file is READ-ONLY in production.
+# Any change here alters system-wide economic indicator data collection.
+# ============================================================================
+
+project:
+  name: bitpredict
+  environment: production
+  version: "1.0.0"
+  timezone: UTC
+
+# ---------------------------------------------------------------------------
+# MACRO ECONOMIC INDICATORS CONFIGURATION
+# ---------------------------------------------------------------------------
+#
+# STRUCTURE OVERVIEW
+# ------------------
+# economic_indicators
+# └── category_name
+#     └── indicator_key
+#         ├── fred_series -> FRED database series code (string)
+#         ├── frequency   -> Data frequency: daily, weekly, monthly, quarterly (string)
+#         └── enabled     -> Include in data collection (boolean)
+#
+# CONTROL MECHANISM
+# -----------------
+# Control is at the indicator level via the 'enabled' flag.
+# Set enabled: false to skip an indicator without removing its config.
+#
+# FREQUENCY VALUES
+# ----------------
+# daily     - Data available every trading day (e.g., crude oil prices)
+# weekly    - Data available weekly (e.g., jobless claims)
+# monthly   - Data available monthly (e.g., unemployment rate, CPI)
+# quarterly - Data available quarterly (e.g., GDP)
+#
+# FRED SERIES CODES
+# -----------------
+# These are official FRED series identifiers used to fetch data from the
+# Federal Reserve Economic Data API. Full series list available at:
+# https://fred.stlouisfed.org/
+#
+# ---------------------------------------------------------------------------
+
+economic_indicators:
+  # =========================================================================
+  # GROSS DOMESTIC PRODUCT & ECONOMIC GROWTH
+  # =========================================================================
+  # Measures of total economic activity and growth rates
+
+  gross_domestic_product:
+    fred_series: GDP
+    frequency: quarterly
+    enabled: true
+    comment: Quarterly real GDP (billions of 2012 USD, SAAR)
+
+  industrial_production_index:
+    fred_series: INDPRO
+    frequency: monthly
+    enabled: true
+    comment: Industrial production index (seasonally adjusted, 2017=100)
+
+  # =========================================================================
+  # EMPLOYMENT & LABOR MARKET
+  # =========================================================================
+  # Labor force participation, employment levels, and wage growth
+
+  unemployment_rate:
+    fred_series: UNRATE
+    frequency: monthly
+    enabled: true
+    comment: Civilian unemployment rate (seasonally adjusted, percent)
+
+  non_farm_payrolls:
+    fred_series: PAYEMS
+    frequency: monthly
+    enabled: true
+    comment: Total nonfarm payroll employment (thousands, seasonally adjusted)
+
+  jobless_claims:
+    fred_series: CCSA
+    frequency: weekly
+    enabled: false
+    comment: Continuing claims (seasonally adjusted, in thousands)
+
+  wage_growth:
+    fred_series: FRBATLWGT3MMAUMHWGO
+    frequency: monthly
+    enabled: true
+    comment: Average wage growth 3-month moving average (percent)
+
+  # =========================================================================
+  # CONSUMER ACTIVITY & RETAIL SALES
+  # =========================================================================
+  # Retail spending patterns and consumer sentiment
+
+  retail_sales:
+    fred_series: MRTSSM44000USS
+    frequency: monthly
+    enabled: true
+    comment: Retail sales (thousands USD, seasonally adjusted)
+
+  retail_sales_growth:
+    fred_series: RSXFS
+    frequency: monthly
+    enabled: true
+    comment: Advance retail sales excluding gas (millions USD, seasonally adjusted)
+
+  consumer_sentiment:
+    fred_series: UMCSENT
+    frequency: monthly
+    enabled: true
+    comment: University of Michigan consumer sentiment index
+
+  # =========================================================================
+  # INFLATION & PRICES
+  # =========================================================================
+  # Consumer and producer price indices, inflation measures
+
+  consumer_price_index:
+    fred_series: MEDCPIM158SFRBCLE
+    frequency: monthly
+    enabled: true
+    comment: Median Consumer Price Index excluding food and energy (percent)
+
+  core_cpi:
+    fred_series: CORESTICKM159SFRBATL
+    frequency: monthly
+    enabled: true
+    comment: Core Consumer Price Index (seasonally adjusted, 1982-84=100)
+
+  producer_price_index:
+    fred_series: PCUOMFGOMFG
+    frequency: monthly
+    enabled: true
+    comment: Producer Price Index for finished goods (1982=100)
+
+  inflation_rate:
+    fred_series: T30YIEM
+    frequency: monthly
+    enabled: true
+    comment: 30-year breakeven inflation rate (percent)
+
+  # =========================================================================
+  # INVENTORY & PRODUCTION
+  # =========================================================================
+  # Business inventory levels and manufacturing activity
+
+  business_inventories:
+    fred_series: BUSINV
+    frequency: monthly
+    enabled: true
+    comment: Total business inventories (millions USD, seasonally adjusted)
+
+  # =========================================================================
+  # INTEREST RATES & MONETARY POLICY
+  # =========================================================================
+  # Federal funds rate and treasury yields
+
+  interest_rates:
+    fred_series: INTDSRUSM193N
+    frequency: monthly
+    enabled: true
+    comment: Interest rates on new auto loans for new cars (percent)
+
+  # =========================================================================
+  # HOUSING MARKET
+  # =========================================================================
+  # Residential construction and housing starts
+
+  housing_starts:
+    fred_series: HOUST
+    frequency: monthly
+    enabled: true
+    comment: Housing starts (thousands of units, seasonally adjusted annual rate)
+
+  # =========================================================================
+  # TRADE & INTERNATIONAL ECONOMICS
+  # =========================================================================
+  # Trade balance and international financial flows
+
+  trade_balance:
+    fred_series: BOPGSTB
+    frequency: monthly
+    enabled: true
+    comment: U.S. goods and services trade balance (millions USD)
+
+  current_account_balance:
+    fred_series: IEABC
+    frequency: quarterly
+    enabled: false
+    comment: U.S. international trade in goods and services (millions USD)
+
+  # =========================================================================
+  # PUBLIC & GOVERNMENT DEBT
+  # =========================================================================
+  # Federal debt and fiscal position
+
+  public_debt:
+    fred_series: TCMDO
+    frequency: monthly
+    enabled: true
+    comment: Total credit market debt outstanding (billions USD)
+
+  federal_debt:
+    fred_series: GFDEBTN
+    frequency: quarterly
+    enabled: true
+    comment: Federal government total debt (billions USD)
+
+  # =========================================================================
+  # ENERGY & COMMODITIES
+  # =========================================================================
+  # Commodity prices and energy costs
+
+  crude_oil_prices:
+    fred_series: DCOILBRENTEU
+    frequency: daily
+    enabled: false
+    comment: Brent crude oil spot prices (USD per barrel)
+
+  # =========================================================================
+  # BUSINESS CONFIDENCE & SENTIMENT
+  # =========================================================================
+  # Business activity and confidence indicators
+
+  business_confidence:
+    fred_series: BSCICP03USM665S
+    frequency: monthly
+    enabled: true
+    comment: Business Sentiment Index for current conditions (index)
+
+# ============================================================================
+# DATA COLLECTION SETTINGS
+# ============================================================================
+#
+# START_DATE
+# ----------
+# The historical start date for initial data backfill.
+# Format: YYYY-MM-DD
+# FRED API will fetch all available data from this date onward.
+#
+# END_DATE
+# --------
+# The end date for data collection.
+# Use "now" (default) to always collect up to the current date.
+# Specific date format: YYYY-MM-DD
+#
+# ============================================================================
+
+settings:
+  start_date: "2024-01-01" # Initial backfill start date (YYYY-MM-DD format)
+  end_date: "2026-12-31" # End date for data fetching ("now" = current date)

@@ -1,0 +1,170 @@
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  BAR COMPARISON — STATISTICAL REPORT
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Metric                             Minute Volatility Tick Volatility    Time 360min
+  --------------------------------------------------------------------------------------------------
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  UNDERSTANDING THIS COMPARISON
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Series A and B are information bars built from the same asset.
+  They differ only in DATA SOURCE:
+    A = calibrated and built from 1-minute OHLCV bars
+    B = calibrated and built from raw tick (aggTrade) data
+    C = Time 360min — fixed-interval TIME BARS (the null hypothesis baseline)
+
+  TIME BAR BASELINE: A time bar closes every N minutes by the clock,
+  regardless of market activity. It carries no information-sampling
+  advantage. If A or B cannot beat C on most criteria, the information
+  bar is not extracting structure the clock cannot already provide.
+
+  DIFFERENT BAR COUNTS ARE NORMAL. The research question is quality,
+  not quantity.  Quality = low serial correlation + high entropy +
+  low kurtosis + uniform sizes + duration CV in adaptive range.
+  A high TIMEOUT % means bars are closing by time limit, not by signal.
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  OVERVIEW
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Bar count                                    1283           7480           1461  
+  Bars / day (mean)                          3.5200        20.4400         3.9900  
+  Timeout bar % (est)                           0.1            1.0            n/a  ← > 10% means most bars carry no signal
+  Mean log-return                         0.0005922      0.0001056      0.0005368  
+  Std log-return                          0.0144901      0.0062131      0.0134101  
+  Duration mean (s)                           23414           3066            n/a  
+  Duration median (s)                         22320           1970            n/a  
+  Duration CV                                0.4090         1.0430            n/a  ← 0.3–0.8 = adaptive; ~0 = time-bar-like; >1 = chaotic
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  DE PRADO INFORMATION BAR CRITERIA  (primary quality metrics)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  BAR SIZE CV : lower = more uniform bars = better.
+  ENTROPY     : higher = more information per bar = better.
+  KURTOSIS    : |value| closer to 0 = more normal returns = better.
+  AUTOCORR    : closer to 0 = less serial dependence = better.
+
+  Bar size CV                                0.0019         0.0050            n/a  lower better  |  winner: —
+  Shannon entropy                            4.4042         4.7765         3.7882  higher better |  winner: Tick Volatility
+  Excess kurtosis                            2.2634         0.0066         5.0227  0 ideal       |  winner: Tick Volatility
+  Skewness                                  -0.2954        -0.0199        -0.0559  0 ideal       |  winner: Tick Volatility
+  Autocorr lag-1                             0.0285        -0.0012        -0.0016  0 ideal       |  winner: Tick Volatility
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  NORMALITY  (returns of good information bars are closer to normal)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  H0: returns are normally distributed.  p > 0.05 → cannot reject normality.
+  Compare the JB statistic: LOWER = closer to normal = better quality bars.
+  Shapiro-Wilk used 1282 obs for Minute Volatility, 5000 obs for Tick Volatility, 1460 obs for Time 360min (max 5000).
+
+  Jarque-Bera stat                           292.30           0.51        1535.45  lower better  |  winner: Tick Volatility
+  Jarque-Bera p                              0.0000         0.7755         0.0000  ***
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  STATIONARITY
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  ADF: H0 = unit root.  p < 0.05 = stationary = good.
+  KPSS: H0 = stationary.  p > 0.05 = cannot reject stationarity = good.
+
+  ADF p-value                                0.0000         0.0000         0.0000  < 0.05 desired
+  KPSS p-value                               0.1000         0.1000         0.1000  > 0.05 desired
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  SERIAL CORRELATION IN RETURNS  (the most important de Prado criterion)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  The entire purpose of information bars is to produce returns with LESS
+  serial correlation than time bars.  H0: no serial correlation.
+  HIGH p-value = no correlation = GOOD.
+  Ljung-Box tests multiple lags simultaneously — more powerful than lag-1 alone.
+
+  Autocorr lag-1                             0.0285        -0.0012        -0.0016  0 ideal
+  Autocorr lag-2                            -0.0480         0.0209         0.0014  
+  Autocorr lag-5                             0.0536        -0.0116         0.0274  
+  Ljung-Box p (10 lags)                      0.4299         0.0998         0.0011  ***  winner: Minute Volatility
+  Ljung-Box p (20 lags)                      0.6501         0.1649         0.0016  ***  winner: Minute Volatility
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  VOLATILITY CLUSTERING  (ARCH / heteroskedasticity)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Volatility clustering is expected in crypto — the question is degree.
+  Ljung-Box on r²: autocorrelation of squared returns.
+
+  ARCH-LM p                                  0.0064         0.0026         0.0000  winner: Minute Volatility
+  LB p (r², 10 lags)                         0.0011         0.0020         0.0000  winner: Tick Volatility
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  VARIANCE RATIO TEST  (Lo-MacKinlay 1988)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  VR(q) = 1 under a random walk.  VR > 1: momentum.  VR < 1: mean-reversion.
+  |VR(q) − 1| closer to 0 = better.
+
+  VR(q= 2)                                   1.0268         0.9989         0.9989  |VR-1|: 0.027/0.001/0.001  winner: Tick Volatility
+  VR(q= 5)                                   0.9944         1.0068         0.9662  |VR-1|: 0.006/0.007/0.034  winner: Minute Volatility
+  VR(q= 8)                                   1.0373         0.9932         0.9597  |VR-1|: 0.037/0.007/0.040  winner: Tick Volatility
+  VR(q=16)                                   1.0425         1.0052         1.0149  |VR-1|: 0.042/0.005/0.015  winner: Tick Volatility
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  NONLINEAR DEPENDENCE  (BDS Test)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  H0: returns are i.i.d.  p > 0.05 = cannot reject i.i.d. = GOOD.
+  BDS detects nonlinear dependence invisible to autocorrelation tests.
+  Note: run on the full return series (no subsampling).
+
+  BDS dim=2 stat                            -0.3289         0.0632         3.6487  
+  BDS dim=2 p                                0.7422         0.9496         0.0003  ***  winner: Tick Volatility
+  BDS dim=3 p                                0.7760         0.9373         0.0001  ***
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  DISTRIBUTION COMPARISONS
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Mann-Whitney U: central tendency.  p > 0.05 = no significant difference.
+  KS 2-sample: full distribution shape.  p > 0.05 = similar.
+  Cohen's d: < 0.2 negligible, 0.2–0.5 small, 0.5–0.8 medium, > 0.8 large.
+
+  A vs B  (Minute vs Tick):
+    Mann-Whitney p                           0.0244                           n/a  < 0.05 = distributions differ
+    KS p-value                               0.0000                           n/a  ***
+    Cohen's d                                0.0437                           n/a  
+
+  A vs C  (Minute vs Time 360min):
+    Mann-Whitney p                           0.5959                           n/a  < 0.05 = different from time bar
+    KS p-value                               0.0004                           n/a  ***
+    Cohen's d                                0.0040                           n/a  
+
+  B vs C  (Tick vs Time 360min):
+    Mann-Whitney p                           0.0689                           n/a  < 0.05 = different from time bar
+    KS p-value                               0.0000                           n/a  ***
+    Cohen's d                               -0.0413                           n/a  
+
+  HOW TO READ: If A and B are clearly different from C (KS p << 0.05)
+  but similar to each other, the information bars are extracting structure
+  the clock cannot provide.  If A or B resembles C more than each other,
+  that pipeline is behaving like a time bar.
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  SIGNIFICANCE CODES
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  *** p < 0.01   ** p < 0.05   * p < 0.10   (none) p ≥ 0.10
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  OVERALL SCORECARD  (de Prado information bar criteria)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Criterion          Minute Volatil Tick Volatilit    Time 360min
+
+  Bar size CV                 0.002          0.005                    n/a     
+  Entropy                     4.404          4.777      ←          3.788     
+  |Kurtosis|                  2.263          0.007      ←          5.023     
+  |AC lag-1|                  0.029          0.001      ←          0.002     
+  LB p (10)                   0.430          0.100   ←             0.001     
+  JB stat                   292.300          0.510      ←       1535.450     
+  |VR(5)−1|                   0.006          0.007   ←             0.034     
+  Timeout %                   0.100          1.000                    n/a     
+
+  Scored 8 criteria  |  Minute Volatility: 2  |  Tick Volatility: 4  |  Time 360min: 0  |  ties: 2
+
+  ► Tick Volatility shows better information bar properties on 4/8 criteria.
+
+  IMPORTANT CAVEAT: 'Better' here means the bar better satisfies
+  information-bar construction theory (de Prado 2018). It does NOT
+  imply better out-of-sample trading performance. A strategy backtest
+  is needed to assess practical trading value.

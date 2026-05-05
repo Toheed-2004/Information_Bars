@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Information Bar Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;800&display=swap');
+
+  /* ── Binance TradingView palette ── */
+  :root {
+    --bg:        #131722;   /* TV dark background */
+    --surface:   #1E222D;   /* TV panel background */
+    --surface2:  #2A2E39;   /* TV hover/active background */
+    --border:    #2A2E39;   /* TV subtle border */
+    --border2:   #363A45;   /* TV stronger border */
+    --teal:      #2DD4BF;   /* Minute bars — teal */
+    --amber:     #F0B90B;   /* Tick bars — Binance yellow */
+    --violet:    #9B8AFB;   /* Time bars — violet */
+    --green:     #26A69A;   /* TV bull green */
+    --red:       #EF5350;   /* TV bear red */
+    --green-dim: rgba(38,166,154,0.15);
+    --red-dim:   rgba(239,83,80,0.15);
+    --text:      #D1D4DC;   /* TV primary text */
+    --text2:     #B2B5BE;   /* TV secondary text */
+    --muted:     #787B86;   /* TV muted label */
+    --dim:       #434651;   /* TV very dim */
+    --separator: #2A2E39;   /* Panel separator */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    height: 48px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--teal);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .logo span { color: var(--muted); font-weight: 400; }
+  .header-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border2);
+  }
+  .symbol-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+  .symbol-chip .tag {
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    padding: 2px 5px;
+    text-transform: uppercase;
+  }
+  header nav {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    align-items: center;
+  }
+  .series-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    transition: all 0.2s;
+  }
+  .series-badge.loaded {
+    color: var(--text2);
+    border-color: var(--border2);
+  }
+  .series-badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 16px;
+    height: 38px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .tool-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 12px 0 0;
+    margin-right: 12px;
+    border-right: 1px solid var(--border2);
+  }
+  .tool-group:last-child { border-right: none; margin-right: 0; padding-right: 0; }
+  .tool-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+    margin-right: 4px;
+  }
+
+  /* TV-style pill button group */
+  .pill-group {
+    display: flex;
+    gap: 1px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 2px;
+  }
+  .pill-btn {
+    padding: 3px 9px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+  }
+  .pill-btn:hover { color: var(--text2); background: var(--surface2); }
+  .pill-btn.active { background: var(--teal); color: #131722; font-weight: 600; }
+
+  .toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all 0.12s;
+  }
+  .toggle-btn:hover { border-color: var(--dim); color: var(--text2); }
+  .toggle-btn.on { color: var(--text); border-color: var(--border2); }
+  .toggle-btn .tdot { width: 7px; height: 7px; border-radius: 50%; }
+
+  tv-select, select {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .range-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100px;
+    height: 2px;
+    background: var(--border2);
+    border-radius: 1px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--teal);
+    cursor: pointer;
+  }
+  #bar-count-label { color: var(--text2); font-size: 10px; min-width: 24px; }
+
+  /* ── Load zone ── */
+  .load-zone {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .drop-target {
+    flex: 1;
+    min-width: 180px;
+    border: 1px dashed var(--border2);
+    border-radius: 6px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .drop-target:hover, .drop-target.drag-over {
+    border-color: var(--teal);
+    background: rgba(45,212,191,0.03);
+  }
+  .drop-target input[type=file] {
+    position: absolute; inset: 0; opacity: 0;
+    cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-inner { display: flex; align-items: center; gap: 8px; pointer-events: none; }
+  .drop-icon {
+    width: 28px; height: 28px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .drop-text { font-size: 10px; }
+  .drop-text strong { display: block; margin-bottom: 1px; font-size: 11px; color: var(--text); }
+  .drop-text span { color: var(--muted); font-size: 9px; }
+  .loaded-name {
+    margin-top: 2px; font-size: 9px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;
+  }
+
+  /* ── Chart area ── */
+  .chart-outer {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+  .chart-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 16px 4px;
+    flex-shrink: 0;
+  }
+  .chart-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+  .chart-subtitle {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    font-weight: 400;
+  }
+  #legend {
+    display: flex;
+    gap: 14px;
+    padding: 0 16px 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 9px; color: var(--muted); letter-spacing: 0.04em;
+  }
+  .legend-item.active { color: var(--text2); }
+  .legend-line { width: 16px; height: 2px; border-radius: 1px; }
+  .legend-dashes { width: 16px; height: 0; border-top: 2px dashed; }
+
+  #chart-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  svg { display: block; }
+
+  /* TV-style grid */
+  .grid line { stroke: var(--border); stroke-dasharray: none; stroke-opacity: 0.6; }
+  .grid .domain { display: none; }
+  .axis text { fill: var(--muted); font-size: 9px; font-family: 'JetBrains Mono'; }
+  .axis .domain { stroke: var(--border2); }
+  .axis .tick line { stroke: transparent; }
+
+  /* Price scale (right-side, TV style) */
+  .axis-right text { fill: var(--muted); font-size: 9px; font-family: 'JetBrains Mono'; text-anchor: start; }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 11px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.08s;
+    min-width: 160px;
+    max-width: 220px;
+    z-index: 50;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  }
+  #tooltip.visible { opacity: 1; }
+  .tt-header { font-size: 9px; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.06em; }
+  .tt-row { display: flex; justify-content: space-between; gap: 10px; margin: 1px 0; font-size: 10px; }
+  .tt-row .label { color: var(--muted); }
+  .tt-row .val { font-weight: 500; color: var(--text2); }
+  .tt-row .up { color: var(--green); }
+  .tt-row .dn { color: var(--red); }
+  .tt-divider { border: none; border-top: 1px solid var(--border); margin: 5px 0; }
+  .tt-series { display: flex; align-items: center; gap: 4px; font-size: 9px; color: var(--muted); margin-bottom: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .tt-series .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    display: flex; gap: 0;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .stat-cell {
+    flex: 1; padding: 7px 14px;
+    border-right: 1px solid var(--border);
+  }
+  .stat-cell:last-child { border-right: none; }
+  .stat-name { font-size: 8px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 3px; }
+  .stat-row { display: flex; align-items: center; gap: 5px; margin: 1px 0; }
+  .stat-row .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .stat-val { font-size: 11px; font-weight: 500; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%;
+    color: var(--dim); gap: 10px;
+  }
+  .empty-icon { font-size: 40px; opacity: 0.25; }
+  .empty-text { font-size: 11px; letter-spacing: 0.04em; text-align: center; }
+  .empty-hint { font-size: 9px; color: var(--muted); text-align: center; max-width: 340px; line-height: 1.7; }
+  code { background: var(--surface2); padding: 1px 4px; border-radius: 2px; font-size: 9px; }
+
+  ::-webkit-scrollbar { width: 3px; height: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ HEADER ═══════════════════════ -->
+<header>
+  <div class="logo">Bar<span>Viewer</span></div>
+  <div class="header-divider"></div>
+  <div class="symbol-chip">
+    BTC<span style="color:var(--muted)">/</span>USDT
+    <span class="tag" id="active-bartype-chip">DOLLAR</span>
+  </div>
+  <nav>
+    <div class="series-badge" id="badge-a"><div class="dot" style="background:var(--teal)"></div><span>MINUTE</span></div>
+    <div class="series-badge" id="badge-b"><div class="dot" style="background:var(--amber)"></div><span>TICK</span></div>
+    <div class="series-badge" id="badge-c"><div class="dot" style="background:var(--violet)"></div><span>TIME</span></div>
+  </nav>
+</header>
+
+<!-- ═══════════════════════ TOOLBAR ═══════════════════════ -->
+<div class="toolbar">
+  <div class="tool-group">
+    <span class="tool-label">Type</span>
+    <div class="pill-group" id="type-selector">
+      <button class="pill-btn active" data-type="dollar">Dollar</button>
+      <button class="pill-btn" data-type="volume">Volume</button>
+      <button class="pill-btn" data-type="volatility">Volatility</button>
+      <button class="pill-btn" data-type="range">Range</button>
+      <button class="pill-btn" data-type="renko">Renko</button>
+      <button class="pill-btn" data-type="hybrid">Hybrid</button>
+    </div>
+  </div>
+  <div class="tool-group">
+    <span class="tool-label">Style</span>
+    <div class="pill-group">
+      <button class="pill-btn active" id="style-candle" onclick="setStyle('candle')">Candles</button>
+      <button class="pill-btn" id="style-ohlc" onclick="setStyle('ohlc')">OHLC</button>
+      <button class="pill-btn" id="style-line" onclick="setStyle('line')">Line</button>
+    </div>
+  </div>
+  <div class="tool-group">
+    <span class="tool-label">Series</span>
+    <button class="toggle-btn on" id="tog-a"><div class="tdot" style="background:var(--teal)"></div>Minute</button>
+    <button class="toggle-btn on" id="tog-b"><div class="tdot" style="background:var(--amber)"></div>Tick</button>
+    <button class="toggle-btn on" id="tog-c"><div class="tdot" style="background:var(--violet)"></div>Time</button>
+  </div>
+  <div class="tool-group">
+    <span class="tool-label">Bottom</span>
+    <div class="pill-group" id="bottom-selector">
+      <button class="pill-btn active" data-bottom="a">Minute</button>
+      <button class="pill-btn" data-bottom="b">Tick</button>
+      <button class="pill-btn" data-bottom="c">Time</button>
+    </div>
+  </div>
+  <div class="tool-group" style="margin-left:auto; border-right:none;">
+    <span class="tool-label">Bars</span>
+    <div class="range-row">
+      <span id="bar-count-label">200</span>
+      <input type="range" id="bar-count" min="50" max="1000" step="50" value="200">
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ LOAD ZONE ═══════════════════════ -->
+<div class="load-zone">
+  <div class="drop-target" id="drop-a">
+    <input type="file" accept=".csv" id="file-a">
+    <div class="drop-inner">
+      <div class="drop-icon" style="background:rgba(45,212,191,0.08);color:var(--teal)">📈</div>
+      <div class="drop-text">
+        <strong>Minute bars CSV</strong>
+        <span>datetime, open, high, low, close, volume, bar_size</span>
+        <div class="loaded-name" id="fname-a" style="color:var(--teal)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="drop-target" id="drop-b">
+    <input type="file" accept=".csv" id="file-b">
+    <div class="drop-inner">
+      <div class="drop-icon" style="background:rgba(240,185,11,0.08);color:var(--amber)">⚡</div>
+      <div class="drop-text">
+        <strong>Tick bars CSV</strong>
+        <span>datetime, open, high, low, close, volume, bar_size</span>
+        <div class="loaded-name" id="fname-b" style="color:var(--amber)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="drop-target" id="drop-c">
+    <input type="file" accept=".csv" id="file-c">
+    <div class="drop-inner">
+      <div class="drop-icon" style="background:rgba(155,138,251,0.08);color:var(--violet)">🕐</div>
+      <div class="drop-text">
+        <strong>Time bars CSV <span style="color:var(--dim)">(optional)</span></strong>
+        <span>datetime, open, high, low, close, volume</span>
+        <div class="loaded-name" id="fname-c" style="color:var(--violet)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ CHART AREA ═══════════════════════ -->
+<div class="chart-outer">
+  <div class="chart-header">
+    <span class="chart-title" id="chart-title">Dollar Bars</span>
+    <span class="chart-subtitle" id="chart-subtitle">minute (teal) vs tick (amber)</span>
+  </div>
+  <div id="legend" style="display:none">
+    <div class="legend-item" id="leg-a"><div class="legend-line" style="background:var(--teal)"></div>Minute (<span id="leg-a-count">—</span>)</div>
+    <div class="legend-item" id="leg-b"><div class="legend-line" style="background:var(--amber)"></div>Tick (<span id="leg-b-count">—</span>)</div>
+    <div class="legend-item" id="leg-c" style="display:none"><div class="legend-dashes" style="border-color:var(--violet)"></div>Time (<span id="leg-c-count">—</span>)</div>
+  </div>
+  <div id="chart-container">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">▤</div>
+      <div class="empty-text">No data loaded</div>
+      <div class="empty-hint">
+        Drop CSV files into the zones above.<br>
+        Required columns: <code>datetime open high low close volume bar_size</code>
+      </div>
+    </div>
+    <svg id="main-svg" style="display:none"></svg>
+    <div id="tooltip"></div>
+  </div>
+
+  <!-- Stats bar at bottom -->
+  <div class="stats-bar" id="stats-bar" style="display:none">
+    <div class="stat-cell">
+      <div class="stat-name">Bar count</div>
+      <div class="stat-row"><div class="dot" style="background:var(--teal)"></div><div class="stat-val" id="st-a-n">—</div></div>
+      <div class="stat-row"><div class="dot" style="background:var(--amber)"></div><div class="stat-val" id="st-b-n">—</div></div>
+      <div class="stat-row" id="st-c-n-row" style="display:none"><div class="dot" style="background:var(--violet)"></div><div class="stat-val" id="st-c-n">—</div></div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-name">Avg bars / day</div>
+      <div class="stat-row"><div class="dot" style="background:var(--teal)"></div><div class="stat-val" id="st-a-bpd">—</div></div>
+      <div class="stat-row"><div class="dot" style="background:var(--amber)"></div><div class="stat-val" id="st-b-bpd">—</div></div>
+      <div class="stat-row" id="st-c-bpd-row" style="display:none"><div class="dot" style="background:var(--violet)"></div><div class="stat-val" id="st-c-bpd">—</div></div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-name">Date range</div>
+      <div class="stat-row"><div class="dot" style="background:var(--teal)"></div><div class="stat-val" id="st-a-range" style="font-size:9px">—</div></div>
+      <div class="stat-row"><div class="dot" style="background:var(--amber)"></div><div class="stat-val" id="st-b-range" style="font-size:9px">—</div></div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-name">Price range (visible)</div>
+      <div class="stat-row" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <div class="stat-val" id="st-price-hi" style="color:var(--green)">—</div>
+        <div class="stat-val" id="st-price-lo" style="color:var(--red)">—</div>
+      </div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-name">Avg duration</div>
+      <div class="stat-row"><div class="dot" style="background:var(--teal)"></div><div class="stat-val" id="st-a-dur">—</div></div>
+      <div class="stat-row"><div class="dot" style="background:var(--amber)"></div><div class="stat-val" id="st-b-dur">—</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const state = {
+  barType:      'dollar',
+  show:         { a: true, b: true, c: true },
+  bottomSeries: 'a',
+  candleStyle:  'candle',
+  maxBars:      200,
+  data:         { a: null, b: null, c: null },
+  labels:       { a: 'Minute', b: 'Tick', c: 'Time' }
+};
+const COLORS = { a: '#2DD4BF', b: '#F0B90B', c: '#9B8AFB' };
+
+// ── Bottom subplot metric selection ────────────────────────────
+//
+// For TIME bars (bar_type === 'time' or series C): volume is the
+// only meaningful metric — these bars don't have a "bar_size"
+// concept, they close on clock time.
+//
+// For ALL information bars (dollar, volume, volatility, range,
+// renko, hybrid): bar_size is the primary metric — it is what
+// the EMA adapts to and what defines bar magnitude. Volume is
+// a secondary field that happens to be recorded.
+//
+// Time bars (series C) always show volume regardless of bar type
+// selection because they have no bar_size threshold.
+//
+function getBottomMetric(seriesKey, barType) {
+  // Series C is always a time bar — use volume
+  if (seriesKey === 'c') return 'volume';
+  // All information bar types: prefer bar_size if available
+  return 'barSize';
+}
+
+// Bottom subplot label for the Y-axis
+function getBottomLabel(seriesKey, barType) {
+  if (seriesKey === 'c') return 'VOLUME';
+  const labels = {
+    dollar:     'DOLLAR VOL ($)',
+    volume:     'VOLUME (BTC)',
+    volatility: 'REALIZED VOL',
+    range:      'EXCURSION',
+    renko:      'DISPLACEMENT',
+    hybrid:     'DOLLAR VOL ($)',
+  };
+  return labels[barType] || 'BAR SIZE';
+}
+
+// Chart layout constants — dynamic based on container height
+const MARGIN  = { top: 12, right: 65, bottom: 20, left: 10 };
+// Price panel = 75% of chart height, bottom panel = 25%
+const PRICE_RATIO  = 0.76;
+const BOTTOM_RATIO = 0.24;
+// Separator between price and bottom panel (in px)
+const SEPARATOR_H  = 1;
+const PANEL_GAP    = 8;  // gap between panels
+
+// ═══════════════════════════════════════════════════════════════
+// CSV PARSING
+// ═══════════════════════════════════════════════════════════════
+function parseCSV(file, key) {
+  Papa.parse(file, {
+    header: true, skipEmptyLines: true, dynamicTyping: true,
+    complete(results) {
+      const rows = results.data;
+      if (!rows.length) { alert('Empty CSV'); return; }
+
+      const cols = Object.keys(rows[0]);
+      const find = pat => cols.find(c => c.toLowerCase().match(pat));
+
+      const dtCol      = find(/datetime|date|timestamp/);
+      const openCol    = find(/^open$/);
+      const highCol    = find(/^high$/);
+      const lowCol     = find(/^low$/);
+      const closeCol   = find(/^close$/);
+      const volCol     = find(/^volume$/);
+      const barSizeCol = find(/^bar_size$/);
+      const durSecCol  = find(/^duration_seconds$/);
+      const durMinCol  = find(/^duration_minutes$/);
+
+      if (!dtCol) { alert(`No datetime column in ${file.name}`); return; }
+      if (!openCol || !highCol || !lowCol || !closeCol) {
+        alert(`Missing OHLC columns in ${file.name}.\nFound: ${cols.join(', ')}`); return;
+      }
+
+      const parsed = rows.map(r => {
+        const dt = new Date(r[dtCol]);
+        if (isNaN(dt)) return null;
+        const o = +r[openCol], h = +r[highCol], l = +r[lowCol], c = +r[closeCol];
+        if ([o,h,l,c].some(isNaN)) return null;
+
+        // Duration: prefer seconds, fall back to minutes×60
+        let dur = 0;
+        if (durSecCol && r[durSecCol])       dur = +r[durSecCol];
+        else if (durMinCol && r[durMinCol])   dur = +r[durMinCol] * 60;
+
+        return {
+          dt, o, h, l, c,
+          v:       volCol     ? +(r[volCol]     || 0) : 0,
+          barSize: barSizeCol ? +(r[barSizeCol] || 0) : 0,
+          dur,
+        };
+      }).filter(Boolean).sort((a, b) => a.dt - b.dt);
+
+      state.data[key] = parsed;
+      document.getElementById(`fname-${key}`).textContent = file.name;
+      document.getElementById(`badge-${key}`).classList.add('loaded');
+
+      // Auto-select bottom series to first loaded
+      if (!state.data[state.bottomSeries] || !state.data[state.bottomSeries].length) {
+        state.bottomSeries = key;
+        document.querySelectorAll('.pill-btn[data-bottom]').forEach(b =>
+          b.classList.toggle('active', b.dataset.bottom === key));
+      }
+      redraw();
+    },
+    error(e) { alert(`Parse error: ${e.message}`); }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DRAWING
+// ═══════════════════════════════════════════════════════════════
+function redraw() {
+  const hasAny = ['a','b','c'].some(k =>
+    state.data[k] && state.show[k] && state.data[k].length);
+  if (!hasAny) { showEmpty(); return; }
+
+  const container = document.getElementById('chart-container');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  if (W === 0 || H === 0) return;
+
+  // Layout: leave room for separator
+  const usableH   = H - MARGIN.top - MARGIN.bottom - SEPARATOR_H - PANEL_GAP;
+  const PRICE_H   = Math.floor(usableH * PRICE_RATIO);
+  const BOTTOM_H  = Math.floor(usableH * BOTTOM_RATIO);
+  const TOTAL_H   = H;
+
+  // Build price slices
+  const slices = {};
+  let allDates = [];
+  ['a','b','c'].forEach(k => {
+    if (!state.data[k] || !state.show[k]) return;
+    const full = state.data[k];
+    const sl = full.slice(Math.max(0, full.length - state.maxBars));
+    slices[k] = sl;
+    allDates.push(...sl.map(d => d.dt));
+  });
+  if (!Object.keys(slices).length) { showEmpty(); return; }
+
+  hideEmpty();
+  updateStats();
+  updateLegend(slices);
+
+  try {
+    const svg = d3.select('#main-svg')
+      .attr('width', W).attr('height', TOTAL_H)
+      .attr('viewBox', `0 0 ${W} ${TOTAL_H}`)
+      .style('display', 'block');
+    svg.selectAll('*').remove();
+
+    // ── Shared X scale ──────────────────────────────────────────
+    const xExt = d3.extent(allDates);
+    const xScale = d3.scaleTime()
+      .domain(xExt)
+      .range([MARGIN.left + 50, W - MARGIN.right]);
+
+    // ── Price Y scale ──────────────────────────────────────────
+    let allL = [], allH = [];
+    Object.values(slices).forEach(sl => {
+      allL.push(...sl.map(d => d.l));
+      allH.push(...sl.map(d => d.h));
+    });
+    const pMin = d3.min(allL), pMax = d3.max(allH);
+    const pPad = (pMax - pMin) * 0.05;
+    const priceTop    = MARGIN.top;
+    const priceBottom = MARGIN.top + PRICE_H;
+    const yPrice = d3.scaleLinear()
+      .domain([pMin - pPad, pMax + pPad])
+      .range([priceBottom, priceTop]);
+
+    // ── Bottom panel data & metric selection ───────────────────
+    // Which series drives the bottom panel
+    let bottomKey  = state.bottomSeries;
+    let bottomData = null;
+    if (state.data[bottomKey] && state.show[bottomKey] && state.data[bottomKey].length) {
+      bottomData = state.data[bottomKey].slice(
+        Math.max(0, state.data[bottomKey].length - state.maxBars));
+    } else {
+      // Fall back to first visible series
+      const fb = ['a','b','c'].find(k => state.data[k] && state.show[k]);
+      if (fb) {
+        bottomKey  = fb;
+        bottomData = state.data[fb].slice(Math.max(0, state.data[fb].length - state.maxBars));
+      }
+    }
+
+    // Determine metric: bar_size for information bars, volume for time bars
+    const metric = getBottomMetric(bottomKey, state.barType);
+    const bottomLabel = getBottomLabel(bottomKey, state.barType);
+
+    // Check if bar_size is actually populated in this data
+    // (some CSVs may not have bar_size — fall back to volume)
+    const effectiveMetric = (metric === 'barSize' && bottomData &&
+      bottomData.some(d => d.barSize > 0)) ? 'barSize' : 'volume';
+
+    // ── Bottom Y scale ─────────────────────────────────────────
+    const bottomPanelTop    = priceBottom + SEPARATOR_H + PANEL_GAP;
+    const bottomPanelBottom = bottomPanelTop + BOTTOM_H;
+    let yBottom = null, maxVal = 1;
+    if (bottomData && bottomData.length) {
+      maxVal = d3.max(bottomData, d => effectiveMetric === 'barSize' ? d.barSize : d.v) || 1;
+      yBottom = d3.scaleLinear()
+        .domain([0, maxVal * 1.05])   // 5% headroom at top
+        .range([bottomPanelBottom, bottomPanelTop]);
+    }
+
+    // ── Background fills for panels ───────────────────────────
+    svg.append('rect')
+      .attr('x', MARGIN.left + 50).attr('y', priceTop)
+      .attr('width', W - MARGIN.left - 50 - MARGIN.right)
+      .attr('height', PRICE_H)
+      .attr('fill', 'transparent');
+
+    // Separator line between price and bottom panel
+    svg.append('line')
+      .attr('x1', MARGIN.left + 50).attr('x2', W - MARGIN.right)
+      .attr('y1', priceBottom + Math.floor(SEPARATOR_H / 2))
+      .attr('y2', priceBottom + Math.floor(SEPARATOR_H / 2))
+      .attr('stroke', 'var(--border2)').attr('stroke-width', 1);
+
+    // ── Price panel grid & axes ────────────────────────────────
+    const priceG = svg.append('g');
+    const innerW = W - MARGIN.left - 50 - MARGIN.right;
+
+    // Horizontal grid lines (price)
+    priceG.append('g').attr('class', 'grid')
+      .attr('transform', `translate(${MARGIN.left + 50},0)`)
+      .call(d3.axisLeft(yPrice)
+        .tickSize(-innerW).tickFormat('').ticks(6));
+
+    // Vertical grid lines (time) — price panel only
+    priceG.append('g').attr('class', 'grid')
+      .attr('transform', `translate(0,${priceTop})`)
+      .call(d3.axisBottom(xScale)
+        .tickSize(PRICE_H).tickFormat('').ticks(8));
+
+    // X axis at bottom of price panel
+    priceG.append('g').attr('class', 'axis')
+      .attr('transform', `translate(0,${priceBottom})`)
+      .call(d3.axisBottom(xScale).ticks(8)
+        .tickFormat(d3.timeFormat('%b %d')));
+
+    // Y axis — right side (TV style)
+    priceG.append('g').attr('class', 'axis axis-right')
+      .attr('transform', `translate(${W - MARGIN.right},0)`)
+      .call(d3.axisRight(yPrice).ticks(6)
+        .tickFormat(v => v >= 1000 ? d3.format(',.0f')(v) : d3.format('.4f')(v)));
+
+    // ── Draw price series ──────────────────────────────────────
+    const keys = Object.keys(slices);
+    keys.forEach((k, si) => {
+      const sl = slices[k];
+      const col = COLORS[k];
+      const isDash = k === 'c';
+      if (state.candleStyle === 'line') {
+        const line = d3.line().x(d => xScale(d.dt)).y(d => yPrice(d.c));
+        priceG.append('path').datum(sl)
+          .attr('fill', 'none').attr('stroke', col)
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', isDash ? '4,3' : 'none')
+          .attr('opacity', 0.9).attr('d', line);
+      } else if (state.candleStyle === 'ohlc') {
+        drawOHLC(priceG, sl, xScale, yPrice, col, isDash, innerW, keys.length, si);
+      } else {
+        drawCandles(priceG, sl, xScale, yPrice, col, isDash, innerW, keys.length, si);
+      }
+    });
+
+    // ── Bottom panel ───────────────────────────────────────────
+    if (bottomData && bottomData.length && yBottom) {
+      const bG = svg.append('g');
+
+      // Bottom panel grid
+      bG.append('g').attr('class', 'grid')
+        .attr('transform', `translate(${MARGIN.left + 50},0)`)
+        .call(d3.axisLeft(yBottom)
+          .tickSize(-innerW).tickFormat('').ticks(3));
+
+      // Bottom panel Y axis (right side, matching price panel)
+      const fmtBottom = v => {
+        if (v === 0) return '0';
+        if (v >= 1e9) return d3.format('.2s')(v).replace('G', 'B');
+        if (v >= 1e6) return d3.format('.1s')(v);
+        if (v >= 1e3) return d3.format('.1s')(v);
+        return d3.format('.3f')(v);
+      };
+      bG.append('g').attr('class', 'axis axis-right')
+        .attr('transform', `translate(${W - MARGIN.right},0)`)
+        .call(d3.axisRight(yBottom).ticks(3).tickFormat(fmtBottom));
+
+      // Bottom panel label (top-left corner of panel)
+      bG.append('text')
+        .attr('x', MARGIN.left + 55)
+        .attr('y', bottomPanelTop + 11)
+        .attr('fill', 'var(--muted)')
+        .attr('font-size', 8)
+        .attr('font-family', 'JetBrains Mono')
+        .attr('letter-spacing', '0.1em')
+        .text(effectiveMetric === 'barSize' ? bottomLabel : 'VOLUME');
+
+      // Series color dot next to label
+      bG.append('circle')
+        .attr('cx', MARGIN.left + 52)
+        .attr('cy', bottomPanelTop + 8)
+        .attr('r', 3)
+        .attr('fill', COLORS[bottomKey] || 'var(--teal)');
+
+      // Draw bars — colored by bar direction (up/down) matching TV style
+      const bw = candleWidth(bottomData, xScale, innerW, 1);
+      bottomData.forEach(d => {
+        const cx   = xScale(d.dt);
+        const isUp = d.c >= d.o;
+        // TV uses same green/red as candles for volume bars
+        const fill = isUp ? 'var(--green)' : 'var(--red)';
+        const val  = effectiveMetric === 'barSize' ? d.barSize : d.v;
+        const y1   = yBottom(val);
+        const y0   = yBottom(0);
+        bG.append('rect')
+          .attr('x', cx - bw / 2).attr('y', y1)
+          .attr('width', Math.max(1, bw))
+          .attr('height', Math.max(1, y0 - y1))
+          .attr('fill', fill)
+          .attr('opacity', 0.65);
+      });
+    }
+
+    // ── Current price label (TV-style floating label on Y axis) ─
+    const lastVisible = Object.values(slices)
+      .flatMap(sl => sl.slice(-1))
+      .sort((a, b) => b.dt - a.dt)[0];
+    if (lastVisible) {
+      const py = yPrice(lastVisible.c);
+      const isUp = lastVisible.c >= lastVisible.o;
+      const lineColor = isUp ? 'var(--green)' : 'var(--red)';
+      const fmtPrice = v => v >= 1000 ? d3.format(',.2f')(v) : d3.format('.4f')(v);
+
+      // Dashed current price line
+      svg.append('line')
+        .attr('x1', MARGIN.left + 50).attr('x2', W - MARGIN.right)
+        .attr('y1', py).attr('y2', py)
+        .attr('stroke', lineColor).attr('stroke-width', 0.8)
+        .attr('stroke-dasharray', '3,3').attr('opacity', 0.7);
+
+      // Price label box on right axis
+      const lblW = MARGIN.right - 4;
+      svg.append('rect')
+        .attr('x', W - MARGIN.right + 1).attr('y', py - 8)
+        .attr('width', lblW).attr('height', 16)
+        .attr('fill', lineColor).attr('rx', 2);
+      svg.append('text')
+        .attr('x', W - MARGIN.right + lblW / 2 + 1).attr('y', py + 4)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#131722').attr('font-size', 9)
+        .attr('font-weight', '600').attr('font-family', 'JetBrains Mono')
+        .text(fmtPrice(lastVisible.c));
+    }
+
+    // ── Tooltip crosshair overlay ──────────────────────────────
+    const bisect = d3.bisector(d => d.dt).left;
+
+    // Full-height overlay (price + bottom panel)
+    const overlay = svg.append('rect')
+      .attr('x', MARGIN.left + 50).attr('y', priceTop)
+      .attr('width', innerW)
+      .attr('height', PRICE_H + SEPARATOR_H + PANEL_GAP + BOTTOM_H)
+      .attr('fill', 'transparent').attr('cursor', 'crosshair');
+
+    // Vertical crosshair
+    const vline = svg.append('line')
+      .attr('stroke', 'var(--muted)').attr('stroke-width', 0.8)
+      .attr('stroke-dasharray', '3,3')
+      .attr('y1', priceTop)
+      .attr('y2', bottomPanelBottom)
+      .attr('opacity', 0);
+
+    // Horizontal crosshair (price panel only)
+    const hline = svg.append('line')
+      .attr('stroke', 'var(--muted)').attr('stroke-width', 0.8)
+      .attr('stroke-dasharray', '3,3')
+      .attr('x1', MARGIN.left + 50).attr('x2', W - MARGIN.right)
+      .attr('opacity', 0);
+
+    const tooltip = document.getElementById('tooltip');
+    const fmtY = v => v >= 1000 ? d3.format(',.2f')(v) : d3.format('.5f')(v);
+
+    overlay.on('mousemove', function(event) {
+      const [mx, my] = d3.pointer(event, this);
+      const absX = mx + MARGIN.left + 50;
+      const absY = my + priceTop;
+
+      vline.attr('x1', absX).attr('x2', absX).attr('opacity', 0.6);
+
+      // Only show horizontal crosshair in price panel
+      if (my <= PRICE_H) {
+        hline.attr('y1', absY).attr('y2', absY).attr('opacity', 0.6);
+      } else {
+        hline.attr('opacity', 0);
+      }
+
+      const hovDate = xScale.invert(absX);
+      let html = `<div class="tt-header">${hovDate.toLocaleString('en-US',{
+        month:'short', day:'numeric', year:'numeric',
+        hour:'2-digit', minute:'2-digit'})}</div>`;
+
+      let found = false;
+      Object.entries(slices).forEach(([k, sl]) => {
+        if (!sl.length) return;
+        const i = Math.min(bisect(sl, hovDate, 1), sl.length - 1);
+        const d = sl[i];
+        if (!d) return;
+        found = true;
+        const isUp = d.c >= d.o;
+        const retPct = ((d.c - d.o) / d.o * 100).toFixed(3) + '%';
+        html += `
+          <div class="tt-series"><div class="dot" style="background:${COLORS[k]}"></div>${state.labels[k]}</div>
+          <div class="tt-row"><span class="label">O</span><span class="val">${fmtY(d.o)}</span></div>
+          <div class="tt-row"><span class="label">H</span><span class="val up">${fmtY(d.h)}</span></div>
+          <div class="tt-row"><span class="label">L</span><span class="val dn">${fmtY(d.l)}</span></div>
+          <div class="tt-row"><span class="label">C</span><span class="val ${isUp?'up':'dn'}">${fmtY(d.c)}</span></div>
+          <div class="tt-row"><span class="label">Ret</span><span class="val ${isUp?'up':'dn'}">${isUp?'+':''}${retPct}</span></div>
+          <hr class="tt-divider">`;
+      });
+
+      // Bottom panel tooltip row
+      if (bottomData && bottomData.length) {
+        const idx = Math.min(bisect(bottomData, hovDate, 1), bottomData.length - 1);
+        const bd = bottomData[idx];
+        if (bd) {
+          const val = effectiveMetric === 'barSize' ? bd.barSize : bd.v;
+          const lbl = effectiveMetric === 'barSize' ? bottomLabel : 'VOLUME';
+          html += `
+            <div class="tt-series"><div class="dot" style="background:${COLORS[bottomKey]}"></div>${lbl}</div>
+            <div class="tt-row"><span class="label">Val</span><span class="val">${d3.format(',.4~g')(val)}</span></div>`;
+        }
+      }
+
+      if (!found) return;
+      tooltip.innerHTML = html;
+      tooltip.classList.add('visible');
+
+      const rect = container.getBoundingClientRect();
+      let tx = event.clientX - rect.left + 16;
+      let ty = event.clientY - rect.top - 30;
+      if (tx + 220 > W) tx = event.clientX - rect.left - 230;
+      if (ty < 0) ty = 4;
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top  = ty + 'px';
+    });
+
+    overlay.on('mouseleave', () => {
+      tooltip.classList.remove('visible');
+      vline.attr('opacity', 0);
+      hline.attr('opacity', 0);
+    });
+
+    // Update price range stats
+    document.getElementById('st-price-hi').textContent = '▲ ' + fmtY(pMax);
+    document.getElementById('st-price-lo').textContent = '▼ ' + fmtY(pMin);
+
+  } catch (err) {
+    console.error('Redraw error:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CANDLE / OHLC DRAWING
+// ═══════════════════════════════════════════════════════════════
+function candleWidth(sl, xScale, innerW, nSeries) {
+  if (sl.length < 2) return 4;
+  const gaps = [];
+  for (let i = 1; i < Math.min(sl.length, 30); i++)
+    gaps.push(xScale(sl[i].dt) - xScale(sl[i-1].dt));
+  const avg = gaps.reduce((a,b)=>a+b,0) / gaps.length;
+  return Math.max(1, Math.min(14, avg * 0.6 / nSeries));
+}
+
+function drawCandles(g, sl, xScale, yScale, col, isDash, innerW, nSeries, si) {
+  const cw = candleWidth(sl, xScale, innerW, nSeries);
+  const off = nSeries > 1 ? (si - (nSeries - 1) / 2) * (cw + 1.5) : 0;
+  // TV uses fill for up, hollow for down (same wick color as body)
+  sl.forEach(d => {
+    const cx  = xScale(d.dt) + off;
+    const isUp = d.c >= d.o;
+    const top  = yScale(Math.max(d.o, d.c));
+    const bot  = yScale(Math.min(d.o, d.c));
+    const bH   = Math.max(0.5, bot - top);
+
+    // Wick
+    g.append('line')
+      .attr('x1', cx).attr('x2', cx)
+      .attr('y1', yScale(d.h)).attr('y2', yScale(d.l))
+      .attr('stroke', col).attr('stroke-width', 0.8)
+      .attr('opacity', isDash ? 0.5 : 0.8);
+
+    // Body — filled (up) or outline (down), TV convention
+    g.append('rect')
+      .attr('x', cx - cw / 2).attr('y', top)
+      .attr('width', cw).attr('height', bH)
+      .attr('fill',   isUp ? col : 'transparent')
+      .attr('stroke', col)
+      .attr('stroke-width', isDash ? 0.6 : 0.9)
+      .attr('stroke-dasharray', isDash ? '2,2' : 'none')
+      .attr('opacity', isDash ? 0.55 : 0.85);
+  });
+}
+
+function drawOHLC(g, sl, xScale, yScale, col, isDash, innerW, nSeries, si) {
+  const hw  = candleWidth(sl, xScale, innerW, nSeries) * 0.55;
+  const off = nSeries > 1 ? (si - (nSeries - 1) / 2) * (hw * 2 + 2) : 0;
+  sl.forEach(d => {
+    const cx = xScale(d.dt) + off;
+    const da = isDash ? '3,2' : 'none';
+    const op = isDash ? 0.6 : 0.88;
+    g.append('line').attr('x1',cx).attr('x2',cx)
+      .attr('y1',yScale(d.h)).attr('y2',yScale(d.l))
+      .attr('stroke',col).attr('stroke-width',0.9)
+      .attr('stroke-dasharray',da).attr('opacity',op);
+    g.append('line').attr('x1',cx-hw).attr('x2',cx)
+      .attr('y1',yScale(d.o)).attr('y2',yScale(d.o))
+      .attr('stroke',col).attr('stroke-width',0.9)
+      .attr('stroke-dasharray',da).attr('opacity',op);
+    g.append('line').attr('x1',cx).attr('x2',cx+hw)
+      .attr('y1',yScale(d.c)).attr('y2',yScale(d.c))
+      .attr('stroke',col).attr('stroke-width',1.1)
+      .attr('stroke-dasharray',da).attr('opacity',op);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════════
+function updateStats() {
+  document.getElementById('stats-bar').style.display = 'flex';
+  ['a','b','c'].forEach(k => {
+    const d = state.data[k];
+    if (!d || !state.show[k]) return;
+    const n = d.length;
+    const fmtDate = dt => dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
+    const daySpan = Math.max(1, (d[n-1].dt - d[0].dt) / 86400000);
+    const bpd = (n / daySpan).toFixed(1);
+    const durs = d.filter(r => r.dur > 0).map(r => r.dur);
+    const avgDur = durs.length ? durs.reduce((a,b)=>a+b,0)/durs.length : 0;
+    const fmtDur = s => s >= 3600 ? (s/3600).toFixed(1)+'h' : s >= 60 ? (s/60).toFixed(0)+'m' : s.toFixed(0)+'s';
+    if (k !== 'c') {
+      document.getElementById(`st-${k}-n`).textContent     = n.toLocaleString();
+      document.getElementById(`st-${k}-bpd`).textContent   = bpd;
+      document.getElementById(`st-${k}-range`).textContent = fmtDate(d[0].dt) + ' → ' + fmtDate(d[n-1].dt);
+      document.getElementById(`st-${k}-dur`).textContent   = avgDur > 0 ? fmtDur(avgDur) : '—';
+    } else {
+      document.getElementById('st-c-n').textContent   = n.toLocaleString();
+      document.getElementById('st-c-bpd').textContent = bpd;
+      document.getElementById('st-c-n-row').style.display   = 'flex';
+      document.getElementById('st-c-bpd-row').style.display = 'flex';
+    }
+  });
+}
+
+function updateLegend(slices) {
+  document.getElementById('legend').style.display = 'flex';
+  ['a','b','c'].forEach(k => {
+    const el = document.getElementById(`leg-${k}`);
+    const sl = slices[k];
+    if (sl) {
+      el.style.display = 'flex';
+      el.classList.add('active');
+      document.getElementById(`leg-${k}-count`).textContent = sl.length.toLocaleString() + ' bars';
+      if (k === 'c') el.style.display = 'flex';
+    } else {
+      el.classList.remove('active');
+    }
+  });
+}
+
+function showEmpty() {
+  document.getElementById('empty-state').style.display = 'flex';
+  document.getElementById('main-svg').style.display    = 'none';
+  document.getElementById('stats-bar').style.display   = 'none';
+  document.getElementById('legend').style.display      = 'none';
+}
+
+function hideEmpty() {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('main-svg').style.display    = 'block';
+}
+
+function setStyle(s) {
+  state.candleStyle = s;
+  ['candle','ohlc','line'].forEach(id => {
+    document.getElementById(`style-${id}`).classList.toggle('active', id === s);
+  });
+  redraw();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EVENT HANDLERS
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('.pill-btn[data-type]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pill-btn[data-type]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.barType = btn.dataset.type;
+    const cap = state.barType.charAt(0).toUpperCase() + state.barType.slice(1);
+    document.getElementById('chart-title').textContent     = cap + ' Bars';
+    document.getElementById('chart-subtitle').textContent  = `minute (teal) vs tick (amber)${state.data.c ? ' vs time (violet)' : ''}`;
+    document.getElementById('active-bartype-chip').textContent = state.barType.toUpperCase();
+    redraw();
+  });
+});
+
+['a','b','c'].forEach(k => {
+  document.getElementById(`tog-${k}`).addEventListener('click', function() {
+    state.show[k] = !state.show[k];
+    this.classList.toggle('on', state.show[k]);
+    redraw();
+  });
+});
+
+document.querySelectorAll('.pill-btn[data-bottom]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.dataset.bottom;
+    if (!state.data[key] || !state.data[key].length) {
+      alert(`No data loaded for ${state.labels[key]} series.`); return;
+    }
+    state.bottomSeries = key;
+    document.querySelectorAll('.pill-btn[data-bottom]').forEach(b =>
+      b.classList.toggle('active', b.dataset.bottom === key));
+    redraw();
+  });
+});
+
+document.getElementById('bar-count').addEventListener('input', function() {
+  state.maxBars = +this.value;
+  document.getElementById('bar-count-label').textContent = this.value;
+  redraw();
+});
+
+['a','b','c'].forEach(k => {
+  const input = document.getElementById(`file-${k}`);
+  const drop  = document.getElementById(`drop-${k}`);
+  input.addEventListener('change', e => { if (e.target.files[0]) parseCSV(e.target.files[0], k); });
+  drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) parseCSV(f, k);
+  });
+});
+
+let rTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(rTimer);
+  rTimer = setTimeout(() => redraw(), 120);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+# =============================================================================
+# ml_module/config/ml_config.yaml
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
+data:
+  bar_data_dir: "data/processed_bars"
+
+  bar_files:
+
+    # ── Minute-source information bars ──────────────────────────────────────
+    dollar_1m:      "1minute_dollar_bars.csv"
+    volume_1m:      "1minute_volume_bars.csv"
+    volatility_1m:  "1minute_volatility_bars.csv"
+    hybrid_1m:      "1minute_hybrid_bars.csv"
+    range_1m:       "1minute_range_bars.csv"
+    renko_1m:       "1minute_renko_bars.csv"
+
+    # ── Tick-source information bars ─────────────────────────────────────────
+    dollar_tick:     "binance_btc_dollar_tick_bars.csv"
+    volume_tick:     "binance_btc_volume_tick_bars.csv"
+    volatility_tick: "binance_btc_volatility_tick_bars.csv"
+    hybrid_tick:     "binance_btc_hybrid_tick_bars.csv"
+    range_tick:      "binance_btc_range_tick_bars.csv"
+    renko_tick:      "binance_btc_renko_tick_bars.csv"
+
+    # # ── Time-based calendar bars (baseline) ──────────────────────────────────
+    # time_1h:   "binance_btc_1h.csv"
+    # time_4h:   "binance_btc_4h.csv"
+    # time_6h:   "binance_btc_6h.csv"
+    # time_8h:   "binance_btc_8h.csv"
+    # time_12h:  "binance_btc_12h.csv"
+
+  datetime_col: "datetime"
+  min_bars: 150
+
+# ---------------------------------------------------------------------------
+# Labeling  (Triple-Barrier Method)
+# ---------------------------------------------------------------------------
+labeling:
+  profit_target: 1.5
+  stop_loss: 1.0
+  max_holding_bars: 20
+  volatility_lookback: 10
+  min_class_count: 1
+
+  label_map:
+    BUY:  1
+    HOLD: 0
+    SELL: -1
+
+# ---------------------------------------------------------------------------
+# Fractional Differencing
+# ---------------------------------------------------------------------------
+fractional_diff:
+  d: "auto"
+  d_min: 0.1
+  d_max: 1.0
+  d_step: 0.1
+  adf_significance: 0.05
+  threshold: 1.0e-5
+  max_window: 200
+
+  # Only close and volume — present in ALL bar types including time bars
+  target_columns:
+    - close
+    - volume
+
+# ---------------------------------------------------------------------------
+# Feature Engineering
+# ---------------------------------------------------------------------------
+features:
+  rsi_windows:     [7, 14, 21]
+  macd_params:     {fast: 12, slow: 26, signal: 9}
+  bb_window:       20
+  atr_window:      14
+  ema_windows:     [9, 21, 50]
+  return_horizons: [1, 3, 5, 10]
+  lag_periods:     [1, 2, 3]
+
+  # Drop everything that is not pure OHLCV-derived
+  # so ALL bar types get identical features — fair comparison
+  drop_columns:
+    # metadata
+    - "Unnamed: 0"
+    - exchange
+    - symbol
+    - datetime_start
+    - datetime_end
+    - created_at
+    # bar structure — information bar specific
+    - bar_size
+    - dollar_volume
+    - vwap
+    - bar_return
+    - price_range
+    - close_position
+    - bar_volatility
+    - direction
+    - renko_reference
+    - duration_minutes
+    - duration_seconds
+    - tick_count
+    # imbalance — tick bars only
+    - buy_dollar_volume
+    - sell_dollar_volume
+    - buy_sell_imbalance
+    - buy_tick_count
+    - sell_tick_count
+    - tick_imbalance
+    # regime scores — 1minute_* bars only
+    - regime_label
+    - regime_trend
+    - regime_volatility
+    - regime_momentum
+    - regime_confidence
+    - trend_strength_z
+    - vol_percentile
+    - volatility_skew
+    - transition_pressure
+    - trend_acceleration
+    - adaptive_alpha
+    - up_vol
+    - down_vol
+    - regime_stability
+    - directional_persistence
+    - score_bull
+    - score_bear
+    - score_range
+    - score_transition
+    - score_high_vol
+    - score_low_vol
+    - score_accelerating
+
+# ---------------------------------------------------------------------------
+# Purged Combinatorial Cross-Validation (CPCV)
+# ---------------------------------------------------------------------------
+cpcv:
+  n_splits: 6
+  n_test_splits: 2
+  embargo_bars: 5
+  min_train_size: 100
+
+# ---------------------------------------------------------------------------
+# Walk-Forward Validation
+# ---------------------------------------------------------------------------
+walk_forward:
+  # Lowered to 200 so short bar types (hybrid_tick, time_12h) still get folds
+  initial_train_bars:   200
+  step_bars:            100
+  min_test_bars:        20
+  embargo_bars:         5
+  confidence_threshold: 0.0   # set to e.g. 0.65 to filter low-confidence signals
+
+# ---------------------------------------------------------------------------
+# Meta-Model (Stacking Ensemble)
+# ---------------------------------------------------------------------------
+ensemble:
+  primary_learners:
+
+    direction_model:
+      role: "direction"
+      type: lightgbm_clf
+      params:
+        n_estimators: 300
+        learning_rate: 0.05
+        num_leaves: 31
+        min_child_samples: 20
+        subsample: 0.8
+        colsample_bytree: 0.8
+        class_weight: balanced
+        random_state: 42
+        n_jobs: -1
+
+    confidence_model:
+      role: "confidence"
+      type: xgboost_reg
+      params:
+        n_estimators: 200
+        learning_rate: 0.05
+        max_depth: 5
+        subsample: 0.8
+        colsample_bytree: 0.8
+        random_state: 42
+        n_jobs: -1
+
+    regime_model:
+      role: "regime"
+      type: rf_clf
+      params:
+        n_estimators: 200
+        max_depth: 8
+        min_samples_leaf: 10
+        class_weight: balanced
+        random_state: 42
+        n_jobs: -1
+
+  meta_learner:
+    type: logreg
+    params:
+      C: 1.0
+      max_iter: 500
+      class_weight: balanced
+      solver: lbfgs
+      random_state: 42
+
+  meta_train_fraction: 0.3
+
+# ---------------------------------------------------------------------------
+# Backtest Bridge
+# ---------------------------------------------------------------------------
+backtest:
+  signal_col: "signals"
+  signal_map:
+    1:    1
+    "-1": -1
+    0:    0
+  output_dir: "ml/outputs"
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging:
+  level: INFO
+  log_file: null

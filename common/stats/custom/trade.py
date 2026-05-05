@@ -1,0 +1,4 @@
+from ..shared.trade import calculate_trade_analysis, _empty_trade_analysis
+
+_get_empty_trade_analysis = _empty_trade_analysis
+_calculate_trade_analysis = calculate_trade_analysis

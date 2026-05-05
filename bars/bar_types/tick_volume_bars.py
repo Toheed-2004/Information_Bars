@@ -39,11 +39,16 @@ Chunk-boundary handling
 Unconsumed ticks are returned as raw leftover arrays prepended to the next chunk.
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import gc
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
+
+from .base import BaseBar as VolumeBar
 
 import numpy as np
 

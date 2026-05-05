@@ -1,0 +1,259 @@
+# ============================================================================
+# ULTIMATE FEATURE EVALUATION PIPELINE - CONFIGURATION
+# ============================================================================
+# This file contains all parameters and flags for the feature evaluation pipeline.
+# Each phase has enable/disable flags for individual functions with dependency management.
+
+# ============================================================================
+# GLOBAL SETTINGS
+# ============================================================================
+global:
+  # Data loading parameters
+  data:
+    exchange: "binance"
+    symbol: "btc"
+    time_horizon: "12h"
+    start_date: "2021-01-01"
+  
+  # Features to evaluate ('all' or list of feature names)
+  # features: "all"
+  features: ["returns_4hr", "vwap", "ema_20", "supertrend", "ema_12"]
+  
+  # Forward return horizons for IC calculation
+  horizons: [1, 5, 20]
+
+
+# ============================================================================
+# PHASE 1: PRE-PROCESSING & MEMORY PRESERVATION
+# ============================================================================
+phase_1:
+  # Enable/disable entire phase
+  enabled: true
+  
+  # Individual function flags
+  functions:
+    # Check stationarity using ADF test
+    check_stationarity:
+      enabled: true
+      params:
+        adf_significance: 0.05  # P-value threshold for stationarity test
+    
+    # Apply fractional differencing (depends on check_stationarity)
+    fractional_differencing:
+      enabled: true
+      depends_on: ["check_stationarity"]  # Only runs if stationarity check is enabled
+      params:
+        fracdiff_d: 0.4  # Fractional differencing parameter
+        apply_only_if_non_stationary: true  # Only apply if feature is non-stationary
+    
+    # Apply domain transformation
+    domain_transformation:
+      enabled: true
+      params:
+        # Transformations are auto-selected based on feature domain:
+        # - positive domain -> signed_log
+        # - bounded domain -> logit_transform
+        # - signed domain -> none
+        auto_select: true
+    
+    # Apply canonical scaling
+    canonical_scaling:
+      enabled: true
+      params:
+        scaling_method: "frozen_tanh_scaler"  # Options: frozen_tanh_scaler, robust_scaler, etc.
+
+
+# ============================================================================
+# PHASE 2: PERFORMANCE SIGNATURE GENERATION
+# ============================================================================
+phase_2:
+  # Enable/disable entire phase (depends on Phase 1)
+  enabled: true
+  depends_on: ["phase_1"]
+  
+  # Analysis mode
+  use_regime_analysis: false  # If true, analyze RIC across regimes; if false, use simple overall RIC
+  
+  # Individual function flags
+  functions:
+    # Create forward returns
+    create_forward_returns:
+      enabled: true
+      params:
+        # Uses global.horizons
+        use_log_returns: true
+    
+    # Calculate regime-specific Rank IC
+    calculate_regime_ric:
+      enabled: true
+      depends_on: ["create_forward_returns"]
+      params:
+        min_regime_samples: 30  # Minimum samples per regime
+        primary_horizon_index: 1  # Index in horizons list (0=short, 1=medium, 2=long)
+        regime_column: "primary_regime"  # Column name for regime data
+    
+    # Calculate IC decay across horizons
+    calculate_ic_decay:
+      enabled: true
+      depends_on: ["create_forward_returns"]
+      params:
+        # Uses all horizons from global.horizons
+        min_samples: 30
+    
+    # Calculate IC stability (Information Ratio)
+    calculate_stability:
+      enabled: true
+      depends_on: ["create_forward_returns"]
+      params:
+        rolling_window: 60  # Window size for rolling IC calculation
+        min_windows: 2  # Minimum number of windows required
+        use_spearman: true  # Use Pearson (fast) instead of Spearman (slow) for rolling IC
+    
+    # Classify features as Universal or Inverse
+    classify_features:
+      enabled: true
+      depends_on: ["calculate_regime_ric", "calculate_stability"]
+      params:
+        # Universal predictor criteria
+        universal:
+          min_ir: 0.15  # Minimum Information Ratio (relaxed from 0.3)
+          min_mean_ric: 0.015  # Minimum mean RIC
+          min_regimes_with_data: 2  # Minimum regimes with sufficient data
+          min_samples_per_regime: 50  # Minimum samples to consider regime
+          require_same_sign: true  # At least 70% of regimes must agree on sign (ignoring weak |RIC| < 0.01)
+        
+        # Inverse predictor criteria
+        inverse:
+          min_ir: 0.15  # Minimum Information Ratio (relaxed from 0.3)
+          max_mean_ric: -0.015  # Maximum mean RIC negative
+          min_regimes_with_data: 2  # Minimum regimes with sufficient data
+          min_samples_per_regime: 50  # Minimum samples to consider regime
+          require_same_sign: true  # At least 70% of regimes must agree on sign (ignoring weak |RIC| < 0.01)
+
+
+# ============================================================================
+# PHASE 3: HARD VETO GATES
+# ============================================================================
+phase_3:
+  # Enable/disable entire phase (depends on Phase 2)
+  enabled: true
+  depends_on: ["phase_2"]
+  
+  # Individual gate flags
+  gates:
+    # Gate 1: Monotonicity alignment
+    monotonicity_check:
+      enabled: true
+      params:
+        # Check if empirical RIC matches expected monotonicity from metadata
+        min_ric_threshold: 0.01  # Minimum absolute RIC for 'none' expected monotonicity
+    
+    # Gate 2: Turnover & cost filter
+    turnover_cost_filter:
+      enabled: true
+      params:
+        transaction_cost: 0.001  # Transaction cost per trade
+        max_turnover: 0.5  # Maximum allowed turnover rate
+        min_cost_adjusted_ic: 0.02  # Minimum IC after cost adjustment
+        cost_multiplier: 0.5  # Multiplier for turnover cost impact
+    
+    # Gate 3: Information Ratio gate
+    information_ratio_gate:
+      enabled: true
+      depends_on: ["phase_2.functions.calculate_stability"]
+      params:
+        min_ir: 0.5  # Minimum Information Ratio threshold
+  
+  # Final pass criteria (all enabled gates must pass)
+  pass_criteria:
+    require_all_gates: true  # If false, feature passes if any gate passes
+
+
+# ============================================================================
+# PHASE 4: ORTHOGONALITY & INTERACTION CONTROL
+# ============================================================================
+phase_4:
+  # Enable/disable entire phase (depends on Phase 3)
+  enabled: true
+  depends_on: ["phase_3"]
+  
+  # Individual function flags
+  functions:
+    # Feature neutralization (currently skipped - no control variables)
+    neutralization:
+      enabled: false
+      params:
+        control_features: []  # List of control features to neutralize against
+        method: "orthogonal_projection"  # Options: orthogonal_projection, regression_residuals
+    
+    # Signature clustering
+    signature_clustering:
+      enabled: true
+      depends_on: ["phase_2.functions.calculate_regime_ric"]
+      params:
+        distance_threshold: 0.05  # Distance threshold for clustering
+        linkage: "average"  # Linkage method: average, complete, single, ward
+        metric: "euclidean"  # Distance metric
+        min_cluster_size: 1  # Minimum features per cluster
+    
+    # Redundancy pruning
+    redundancy_pruning:
+      enabled: true
+      depends_on: ["signature_clustering"]
+      params:
+        selection_criterion: "max_abs_ric"  # Options: max_abs_ric, max_ir, max_ic
+        keep_top_n_per_cluster: 1  # Number of features to keep per cluster
+
+
+# ============================================================================
+# OUTPUT SETTINGS
+# ============================================================================
+output:
+  # Save results to file
+  save_results: true
+  output_dir: "common/ai/results"
+  
+  # Result file formats
+  formats:
+    json: true  # Save as JSON
+    csv: false  # Save summary as CSV
+    pickle: false  # Save full results as pickle
+  
+  # What to include in output
+  include:
+    phase_1_details: true  # Include Phase 1 transformation details
+    phase_2_regime_ric: true  # Include regime-specific RIC values
+    phase_2_ic_decay: true  # Include IC decay across horizons
+    phase_3_gate_details: true  # Include individual gate results
+    phase_4_cluster_info: true  # Include cluster assignments
+    
+    # Only include features that passed all phases
+    only_selected_features: true
+
+
+# ============================================================================
+# ADVANCED SETTINGS
+# ============================================================================
+advanced:
+  # Parallel processing
+  parallel:
+    enabled: false  # Enable parallel processing (experimental)
+    n_jobs: -1  # Number of parallel jobs (-1 = all cores)
+  
+  # Caching
+  cache:
+    enabled: false  # Cache intermediate results
+    cache_dir: "common/ai/.cache"
+  
+  # Validation
+  validation:
+    check_data_quality: true  # Check for data quality issues
+    min_data_points: 1000  # Minimum data points required
+    max_missing_ratio: 0.1  # Maximum ratio of missing values
+  
+  # Error handling
+  error_handling:
+    skip_failed_features: true  # Continue if a feature fails
+    log_errors: true  # Log detailed error messages
+    raise_on_critical: true  # Raise exception on critical errors
+

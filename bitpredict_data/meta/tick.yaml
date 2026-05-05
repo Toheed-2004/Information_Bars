@@ -1,0 +1,228 @@
+# ============================================================================
+# bitpredict — TICK DATA CONFIGURATION
+# ============================================================================
+#
+# PURPOSE
+# -------
+# This file defines tick data collection settings for each exchange and market.
+# These settings will be stored in the meta.data_tick table and read by
+# data fetchers instead of using individual YAML configs.
+#
+# It is parsed by a Python ingestion script to populate ONE table:
+#
+#   meta.data_tick
+#
+# Table shape:
+#   id | exchange | market_type | enabled | symbols | streams | depth | buffer_size | connection_delay
+#
+# This file is READ-ONLY in production.
+# Any change here alters system-wide tick data collection.
+# ============================================================================
+
+project:
+  name: bitpredict
+  environment: production
+  version: "1.0.0"
+  timezone: UTC
+
+# ---------------------------------------------------------------------------
+# TICK DATA DEFINITIONS
+# ---------------------------------------------------------------------------
+#
+# STRUCTURE OVERVIEW
+# ------------------
+# exchanges
+# └── exchange
+#     └── markets
+#         └── market_type
+#             ├── enabled           -> Per-market control (boolean)
+#             ├── symbols           -> List of symbols to collect
+#             ├── streams           -> Stream types dictionary
+#             ├── depth             -> Orderbook depth level
+#             ├── buffer_size       -> Data buffer size
+#             └── connection_delay  -> Delay between connections
+#
+# CONTROL MECHANISM
+# -----------------
+# Control is at the market level via the 'enabled' flag.
+# Set enabled: false to disable a market without deleting its config.
+#
+# symbols and streams are stored AS-IS into the database as JSONB.
+# No row explosion. One market = one DB row.
+#
+# STREAM TYPES
+# ------------
+# Each exchange supports different stream types:
+# - orderbook: Order book updates (bid/ask)
+# - trade: Trade execution data
+# - ticker: Ticker/quote data
+# - kline/candle: OHLCV candle data
+# - liquidation: Liquidation events (futures only)
+# - rpi_orderbook: Refreshed orderbook
+# - book_ticker: Best bid/ask ticker
+# - allMids: All mid prices
+# - ohlc: OHLC data
+#
+# Set to false to disable a specific stream type without removing it.
+# ---------------------------------------------------------------------------
+
+exchanges:
+  # =========================
+  # BYBIT
+  # =========================
+  bybit:
+    # Market configurations for Bybit
+    markets:
+      linear:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"
+        streams:
+          orderbook: true
+          rpi_orderbook: true
+          trade: true
+          ticker: true
+          kline: true
+          liquidation: true
+        depth: 50
+        buffer_size: 1
+        connection_delay: 1.0
+        
+      spot:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"          
+        streams:
+          orderbook: true
+          rpi_orderbook: true
+          trade: true
+          ticker: true
+          kline: true
+        depth: 50
+        buffer_size: 1
+        connection_delay: 1.0
+        
+      inverse:
+        enabled: false
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"
+        streams:
+          orderbook: true
+          rpi_orderbook: true
+          trade: true
+          ticker: true
+          kline: true
+          liquidation: true
+        depth: 50
+        buffer_size: 1
+        connection_delay: 1.0
+
+  # =========================
+  # BINANCE
+  # =========================
+  binance:
+    markets:
+      spot:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"
+        streams:
+          order_book: true
+          trades: true
+          ticker: true
+          kline: true
+          book_ticker: true
+        depth: 50
+        buffer_size: 1
+        connection_delay: 1.0
+        
+      futures:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"
+        streams:
+          order_book: true
+          trades: true
+          ticker: true
+          kline: true
+          liquidations: true
+          book_ticker: true
+        depth: 50
+        buffer_size: 1
+        connection_delay: 1.0
+
+  # =========================
+  # KRAKEN
+  # =========================
+  kraken:
+    markets:
+      spot:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"
+        streams:
+          book: true
+          trade: true
+          ticker: true
+          ohlc: true
+        depth: 10
+        buffer_size: 1
+        connection_delay: 1.0
+      futures:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+        streams:
+          book: true
+          trade: true
+          ticker: true
+          ticker_lite: true
+        depth: 10
+        buffer_size: 1
+        connection_delay: 1.0
+
+  # =========================
+  # HYPERLIQUID
+  # =========================
+  hyperliquid:
+    markets:
+      spot:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"
+        streams:
+          trades: true
+          l2Book: true
+          candle: true
+        depth: 50
+        buffer_size: 1
+        connection_delay: 1.0
+      futures:
+        enabled: true
+        symbols:
+          - "btc"
+          - "eth"
+          - "sol"
+        streams:
+          trades: true
+          allMids: true
+          l2Book: true
+          candle: true
+        depth: 50
+        buffer_size: 1
+        connection_delay: 1.0
