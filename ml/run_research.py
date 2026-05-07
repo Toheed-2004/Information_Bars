@@ -306,9 +306,12 @@ def run_research(
             continue
 
         # Load the signal CSV just exported by the ML pipeline
-        sig_path = output_dir / f"signals_unknown_{bar_type}.csv"
+        # Try asset-named first, then legacy fallbacks
+        asset    = cfg["data"].get("asset", "unknown")
+        sig_path = output_dir / f"signals_{asset}_{bar_type}.csv"
         if not sig_path.exists():
-            # Also try without 'unknown_'
+            sig_path = output_dir / f"signals_unknown_{bar_type}.csv"
+        if not sig_path.exists():
             sig_path = output_dir / f"signals_{bar_type}.csv"
 
         if not sig_path.exists():
@@ -464,8 +467,10 @@ if __name__ == "__main__":
 
     # Build backtest config from CLI args
     bt_cfg = DEFAULT_BACKTEST_CFG.copy()
-    bt_cfg["risk_management"]["static"]["take_profit"] = args.tp
-    bt_cfg["risk_management"]["static"]["stop_loss"] = args.sl
+    if args.tp is not None:
+        bt_cfg["risk_management"]["static"]["take_profit"] = args.tp
+    if args.sl is not None:
+        bt_cfg["risk_management"]["static"]["stop_loss"] = args.sl
 
     run_research(
         bar_types=args.bar_types,

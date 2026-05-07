@@ -352,8 +352,22 @@ class MetaEnsemble:
             # Use |label| as a signal-strength proxy (0 = HOLD = low conf)
             return np.abs(y).astype(np.float64)
         elif role == "regime":
-            # Binary: 1 if trending (BUY or SELL), 0 if HOLD
-            return (y != 0).astype(np.int32)
+            # Consecutive-label consistency over last 5 non-HOLD bars.
+            # 1 = trending  (majority of recent bars same direction)
+            # 0 = ranging   (mixed directions or HOLD)
+            # Genuinely different from confidence target (|label|).
+            n      = len(y)
+            regime = np.zeros(n, dtype=np.int32)
+            window = 5
+            for i in range(n):
+                recent = [y[j] for j in range(max(0, i - window), i) if y[j] != 0]
+                if len(recent) < 2:
+                    regime[i] = 1
+                else:
+                    most_recent = recent[0]
+                    same = sum(1 for v in recent if v == most_recent)
+                    regime[i] = 1 if same > len(recent) / 2 else 0
+            return regime
         return y
 
     def _check_fitted(self):

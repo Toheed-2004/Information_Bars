@@ -319,10 +319,12 @@ class MLPipeline:
         bar_type:    str,
     ) -> pd.DataFrame:
         self._exporter = build_exporter(self.cfg["backtest"])
+        asset = self.cfg["data"].get("asset", "unknown")
         return self._exporter.export(
             predictions = predictions,
             bar_df      = bar_df,
             bar_type    = bar_type,
+            asset       = asset,
         )
 
     # ------------------------------------------------------------------
@@ -366,3 +368,8 @@ class _NumpyModelWrapper:
         if isinstance(X, pd.DataFrame):
             X = X.to_numpy(dtype=np.float32)
         return self._ens.predict(X)
+
+    def predict_proba(self, X) -> np.ndarray:
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy(dtype=np.float32)
+        return self._ens.predict_proba(X)
