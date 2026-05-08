@@ -41,9 +41,9 @@ data:
 # Labeling  (Triple-Barrier Method)
 # ---------------------------------------------------------------------------
 labeling:
-  profit_target: 1.5
-  stop_loss: 1.0
-  max_holding_bars: 20
+  profit_target: 2.5
+  stop_loss: 2.0
+  max_holding_bars: 10
   volatility_lookback: 10
   min_class_count: 1
 
@@ -84,56 +84,56 @@ features:
   # Drop everything that is not pure OHLCV-derived
   # so ALL bar types get identical features — fair comparison
   drop_columns:
-    # metadata
-    - "Unnamed: 0"
-    - exchange
-    - symbol
-    - datetime_start
-    - datetime_end
-    - created_at
-    # bar structure — information bar specific
-    - bar_size
-    - dollar_volume
-    - vwap
-    - bar_return
-    - price_range
-    - close_position
-    - bar_volatility
-    - direction
-    - renko_reference
-    - duration_minutes
-    - duration_seconds
-    - tick_count
-    # imbalance — tick bars only
-    - buy_dollar_volume
-    - sell_dollar_volume
-    - buy_sell_imbalance
-    - buy_tick_count
-    - sell_tick_count
-    - tick_imbalance
-    # regime scores — 1minute_* bars only
-    - regime_label
-    - regime_trend
-    - regime_volatility
-    - regime_momentum
-    - regime_confidence
-    - trend_strength_z
-    - vol_percentile
-    - volatility_skew
-    - transition_pressure
-    - trend_acceleration
-    - adaptive_alpha
-    - up_vol
-    - down_vol
-    - regime_stability
-    - directional_persistence
-    - score_bull
-    - score_bear
-    - score_range
-    - score_transition
-    - score_high_vol
-    - score_low_vol
-    - score_accelerating
+    # # metadata
+    # - "Unnamed: 0"
+    # - exchange
+    # - symbol
+    # - datetime_start
+    # - datetime_end
+    # - created_at
+    # # bar structure — information bar specific
+    # - bar_size
+    # - dollar_volume
+    # - vwap
+    # - bar_return
+    # - price_range
+    # - close_position
+    # - bar_volatility
+    # - direction
+    # - renko_reference
+    # - duration_minutes
+    # - duration_seconds
+    # - tick_count
+    # # imbalance — tick bars only
+    # - buy_dollar_volume
+    # - sell_dollar_volume
+    # - buy_sell_imbalance
+    # - buy_tick_count
+    # - sell_tick_count
+    # - tick_imbalance
+    # # regime scores — 1minute_* bars only
+    # - regime_label
+    # - regime_trend
+    # - regime_volatility
+    # - regime_momentum
+    # - regime_confidence
+    # - trend_strength_z
+    # - vol_percentile
+    # - volatility_skew
+    # - transition_pressure
+    # - trend_acceleration
+    # - adaptive_alpha
+    # - up_vol
+    # - down_vol
+    # - regime_stability
+    # - directional_persistence
+    # - score_bull
+    # - score_bear
+    # - score_range
+    # - score_transition
+    # - score_high_vol
+    # - score_low_vol
+    # - score_accelerating
 
 # ---------------------------------------------------------------------------
 # Purged Combinatorial Cross-Validation (CPCV)
