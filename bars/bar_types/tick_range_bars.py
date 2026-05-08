@@ -106,6 +106,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 from .base import BaseBar as RangeBar
+from common import *
 
 import numpy as np
 
@@ -362,74 +363,119 @@ def _finalize_range_bar(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def calibrate(
-    bar_processor: RangeBar,
-    csv_path: Path,
-    gather_fn: Callable,
-) -> dict:
+def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     """
-    Two-step calibration:
+    Tick-native calibration for range bars.
 
-    Step 1: ticks → 1-min OHLCV → RangeBar.analyze_market_history()
-            Extracts target_bars_per_day, ema_alpha, alpha_min/max,
-            min/max_duration_minutes, regime metadata.
-            These frequency/adaptation parameters are independent of
-            signal units and are correctly computed from minute data.
-
-    Step 2: Compute daily tick-native range from raw calibration ticks:
-                daily_range = (day_high - day_low) / day_first_price
-            Replace target_range with:
-                median(daily_tick_range) / target_bars_per_day
-            This is the tick-native signal target in the same units as the
-            process loop accumulator — (H-L)/open as a relative fraction.
-
-    The resulting target_range is directly fed to _find_range_bar_end and
-    to RangeBar.update_market_params for EMA adaptation.
+    - target_range        = median(daily tick H-L / bar_open) / target_bars_per_day
+                            exact tick highs/lows, not minute-bucket approximations
+    - target_bars_per_day = f(log-return entropy, market efficiency)
+    - ema_alpha           = f(daily range CV, regime stability, noise)
+    No minute bucketing anywhere.
     """
+    from common.constants import (
+        ANALYSIS_LOOKBACK_DAYS, BARS_PER_DAY_MIN, BARS_PER_DAY_MAX,
+        RANGE_BASE_FREQUENCY, SLOW_BAR_FREQUENCY_MULTIPLIER,
+        DURATION_ESTIMATED_MULTIPLIER, ALPHA_MIN_ABSOLUTE, ALPHA_MAX_ABSOLUTE,
+    )
+    from common.logging import get_logger
+    logger = get_logger(__name__)
+
+    TICK_MIN_DURATION_SECONDS       = 10
+    TICK_MAX_DURATION_SECONDS       = 28_800
+    TICK_MAX_DURATION_FLOOR_SECONDS = 300
+
     cal_p, cal_q, cal_ts_ms, _ = gather_fn(csv_path, ANALYSIS_LOOKBACK_DAYS)
-    n_days = max(
-        1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // (86_400 * 1_000)) + 1
-    )
+    n_days = max(1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // _MS_PER_DAY) + 1)
+    logger.info("  Calibrating range bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days)
+
+    prices_f64 = cal_p.astype(np.float64)
+    log_ret    = _tick_log_returns(prices_f64)
+    if len(log_ret) < 100:
+        logger.warning("  Insufficient log-returns — using defaults")
+        del cal_p, cal_q, cal_ts_ms; gc.collect()
+        return bar_processor._get_default_params()
+
+    # ── information multiplier ────────────────────────────────────────────────
+    ret_entropy  = _tick_entropy(log_ret)
+    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
+    information_multiplier = max(0.5, min(2.0, information_ratio))
+
+    # ── activity multiplier ───────────────────────────────────────────────────
+    market_eff          = _tick_market_efficiency(cal_p, cal_q)
+    activity_percentile = max(0.0, min(1.0, market_eff))
+    activity_multiplier = 0.5 + activity_percentile
+
+    # ── target_bars_per_day ───────────────────────────────────────────────────
+    target_bpd = max(BARS_PER_DAY_MIN,
+                     min(BARS_PER_DAY_MAX,
+                         RANGE_BASE_FREQUENCY
+                         * information_multiplier * activity_multiplier
+                         / SLOW_BAR_FREQUENCY_MULTIPLIER))
+
+    # ── tick-native daily range: (day_high - day_low) / day_first_price ───────
+    # This is exact — uses the true highest and lowest trade of each day,
+    # not minute-bucket approximations.
+    day_idx     = _tick_daily_split(cal_ts_ms)
+    unique_days = np.unique(day_idx)
+    daily_ranges = []
+    for d in unique_days:
+        mask       = day_idx == d
+        day_prices = prices_f64[mask]
+        if len(day_prices) == 0:
+            continue
+        first_price = day_prices[0]
+        if first_price > 0:
+            daily_ranges.append((day_prices.max() - day_prices.min()) / first_price)
+    daily_ranges = np.array(daily_ranges, dtype=np.float64)
+
+    median_daily_range = float(np.median(daily_ranges))
+    mad_range          = float(np.median(np.abs(daily_ranges - median_daily_range)))
+    range_cv           = mad_range / median_daily_range if median_daily_range > 0 else 0.3
+
+    target_range = median_daily_range / max(1.0, target_bpd)
+
+    # ── ema_alpha ─────────────────────────────────────────────────────────────
+    regime_stability = _tick_regime_stability(log_ret)
+    market_noise     = _tick_market_noise(log_ret)
+    alpha_min, alpha_max, ema_alpha = _alpha_from_cv(range_cv, regime_stability, market_noise)
+    alpha_min = max(alpha_min, ALPHA_MIN_ABSOLUTE)
+    alpha_max = min(alpha_max, ALPHA_MAX_ABSOLUTE)
+    ema_alpha = max(alpha_min, min(alpha_max, ema_alpha))
+
+    min_s, max_s = _duration_seconds_from_bpd(
+        target_bpd, TICK_MIN_DURATION_SECONDS,
+        TICK_MAX_DURATION_FLOOR_SECONDS, TICK_MAX_DURATION_SECONDS,
+        DURATION_ESTIMATED_MULTIPLIER)
+
+    del cal_p, cal_q, cal_ts_ms; gc.collect()
+
     logger.info(
-        "  Calibrating range bars from %d ticks (%d days) ...",
-        len(cal_ts_ms),
-        n_days,
-    )
+        "  Range calibration done — tick_target=%.6f (%.4f%%)  "
+        "bars/day=%.1f  alpha=%.3f  [TICK-NATIVE]",
+        target_range, target_range * 100, target_bpd, ema_alpha)
 
-    # Step 1 — frequency/adaptation params from minute analysis
-    minute_bars = _ticks_to_minute_ohlcv_for_calibration(
-        cal_p.astype(np.float64), cal_q.astype(np.float64), cal_ts_ms
-    )
-    market_params = bar_processor.analyze_market_history(minute_bars)
-    del minute_bars
-    gc.collect()
-
-    # Step 2 — replace target_range with tick-native excursion target
-    daily_ranges = _compute_daily_tick_range(cal_p.astype(np.float64), cal_ts_ms)
-    del cal_p, cal_q, cal_ts_ms
-    gc.collect()
-
-    target_bpd = max(1.0, market_params.get("target_bars_per_day", 4.0))
-    tick_target = float(np.median(daily_ranges)) / target_bpd
-    market_params["target_range"] = tick_target
-
-    # Tick-specific duration bounds (seconds)
-    estimated_bar_seconds = 86_400.0 / target_bpd
-    market_params["min_duration_seconds"] = TICK_MIN_DURATION_SECONDS
-    market_params["max_duration_seconds"] = max(
-        TICK_MAX_DURATION_FLOOR_SECONDS,
-        min(TICK_MAX_DURATION_SECONDS, int(estimated_bar_seconds * 3)),
-    )
-
-    logger.info(
-        "  Range calibration done — "
-        "tick target=%.6f (%.4f%% excursion)  bars/day=%.1f  alpha=%.3f",
-        tick_target,
-        tick_target * 100,
-        target_bpd,
-        market_params["ema_alpha"],
-    )
-    return market_params
+    return {
+        "target_range":           target_range,
+        "ema_alpha":              ema_alpha,
+        "alpha_min":              alpha_min,
+        "alpha_max":              alpha_max,
+        "target_bars_per_day":    target_bpd,
+        "min_duration_seconds":   min_s,
+        "max_duration_seconds":   max_s,
+        "range_cv":               range_cv,
+        "median_daily_range":     median_daily_range,
+        "regime_stability":       regime_stability,
+        "market_noise":           market_noise,
+        "information_ratio":      information_ratio,
+        "market_efficiency":      market_eff,
+        "bars_completed":         0,
+        "monitoring_counter":     0,
+        "bars_since_optimization":0,
+        "target_volume_history":  [],
+        "optimization_events":    [],
+    }
 
 
 def process_chunk(

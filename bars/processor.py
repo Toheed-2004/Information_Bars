@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 _BINANCE_COLUMNS = [
     "agg_trade_id", "price", "quantity",
     "first_trade_id", "last_trade_id",
-    "timestamp_ms", "is_buyer_maker", "is_best_match",
+    "transact_time", "is_buyer_maker", 
 ]
 CHUNK_SIZE = 1_000_000*5
 
@@ -54,20 +54,25 @@ CHUNK_SIZE = 1_000_000*5
 def _iter_csv_chunks(path: str) -> Iterator[tuple]:
     ms_divisor: Optional[int] = None
     for chunk in pd.read_csv(
-        path, header=None, names=_BINANCE_COLUMNS,
-        dtype={"agg_trade_id":"int64","price":"float32","quantity":"float32",
-               "first_trade_id":"int64","last_trade_id":"int64",
-               "timestamp_ms":"int64","is_buyer_maker":"str","is_best_match":"str"},
+        path,
+        header=0,
+        dtype=str,
         chunksize=CHUNK_SIZE,
     ):
-        chunk["is_buyer_maker"] = chunk["is_buyer_maker"].str.upper() == "TRUE"
+        chunk = chunk[chunk["agg_trade_id"].str.strip().str.isdigit()]
+        if chunk.empty:
+            continue
+        chunk["price"]        = pd.to_numeric(chunk["price"],        errors="coerce").astype("float32")
+        chunk["quantity"]     = pd.to_numeric(chunk["quantity"],     errors="coerce").astype("float32")
+        chunk["transact_time"]= pd.to_numeric(chunk["transact_time"],errors="coerce").astype("int64")
         chunk = chunk[(chunk["price"] > 0) & (chunk["quantity"] > 0)]
         if chunk.empty:
             continue
+        chunk["is_buyer_maker"] = chunk["is_buyer_maker"].str.upper() == "TRUE"
         if ms_divisor is None:
-            sample = int(chunk["timestamp_ms"].iloc[0])
+            sample = int(chunk["transact_time"].iloc[0])
             ms_divisor = 1_000 if sample > 9_999_999_999_999 else 1
-        ts = chunk["timestamp_ms"].to_numpy(dtype=np.int64)
+        ts = chunk["transact_time"].to_numpy(dtype=np.int64)
         if ms_divisor != 1:
             ts = ts // ms_divisor
         yield (

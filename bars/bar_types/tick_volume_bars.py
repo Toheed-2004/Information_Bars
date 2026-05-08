@@ -47,6 +47,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
+from common import *
 
 from .base import BaseBar as VolumeBar
 
@@ -266,48 +267,128 @@ def _sync_volume_state(market_params: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def calibrate(
-    bar_processor: VolumeBar,
-    csv_path: Path,
-    gather_fn: Callable,
-) -> dict:
+def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     """
-    Calibrate VolumeBar from the first ANALYSIS_LOOKBACK_DAYS of tick data.
-    Ticks → synthetic 1-minute OHLCV → VolumeBar.analyze_market_history().
+    Tick-native calibration for volume bars.
+
+    All parameters computed directly from raw tick arrays:
+    - target_volume       = median(daily_Σqty) / target_bars_per_day
+    - target_bars_per_day = f(volume entropy, market efficiency, asset tier)
+    - ema_alpha           = f(daily volume CV, regime stability, market noise)
+    No minute bucketing anywhere.
     """
+    from common.constants import (
+        ANALYSIS_LOOKBACK_DAYS, BARS_PER_DAY_MIN, BARS_PER_DAY_MAX,
+        VOLUME_TIER_BASE_BARS, VOLUME_TIER_BASE_BARS_DEFAULT,
+        SLOW_BAR_FREQUENCY_MULTIPLIER, FREQ_ADJ_BASE, FREQ_ADJ_SENSITIVITY,
+        VOLUME_EXTREME_THRESHOLD_MULTIPLIER, DURATION_ESTIMATED_MULTIPLIER,
+        ALPHA_MIN_ABSOLUTE, ALPHA_MAX_ABSOLUTE,
+    )
+    from common.logging import get_logger
+    logger = get_logger(__name__)
+
+    TICK_MIN_DURATION_SECONDS      = 10
+    TICK_MAX_DURATION_SECONDS      = 28_800
+    TICK_MAX_DURATION_FLOOR_SECONDS = 300
+
     cal_p, cal_q, cal_ts_ms, _ = gather_fn(csv_path, ANALYSIS_LOOKBACK_DAYS)
-    n_days = max(
-        1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // (86_400 * 1_000)) + 1
-    )
+    n_days = max(1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // _MS_PER_DAY) + 1)
+    logger.info("  Calibrating volume bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days)
+
+    # ── daily Σqty ────────────────────────────────────────────────────────────
+    day_idx = _tick_daily_split(cal_ts_ms)
+    daily_vol, _ = _tick_daily_metric(cal_q.astype(np.float64), day_idx)
+
+    median_daily_vol = float(np.median(daily_vol))
+    mad = float(np.median(np.abs(daily_vol - median_daily_vol)))
+    volume_cv = mad / median_daily_vol if median_daily_vol > 0 else 0.3
+
+    # ── asset tier (by daily BTC volume) ─────────────────────────────────────
+    # Reuse volume bar's tier logic: tier1 if median > ~2× std above median
+    std_vol = float(np.std(daily_vol))
+    if std_vol > 0 and median_daily_vol > 0:
+        cv_raw = std_vol / median_daily_vol
+        if median_daily_vol >= median_daily_vol * (1.0 + cv_raw * 2.0) * 0.8:
+            asset_tier = "tier1"
+        elif median_daily_vol >= median_daily_vol * (0.1 + cv_raw * 0.5) * 2.0:
+            asset_tier = "tier2"
+        else:
+            asset_tier = "tier3"
+    else:
+        asset_tier = "tier1"  # BTC futures always tier1
+
+    # ── information multiplier from tick log-return entropy ──────────────────
+    log_ret = _tick_log_returns(cal_p.astype(np.float64))
+    if len(log_ret) < 100:
+        logger.warning("  Insufficient log-returns — using defaults")
+        return bar_processor._get_default_params()
+
+    ret_entropy  = _tick_entropy(log_ret)
+    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    information_ratio = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
+    information_multiplier = max(0.5, min(2.0, information_ratio))
+
+    # ── activity multiplier from market efficiency ────────────────────────────
+    market_eff = _tick_market_efficiency(cal_p, cal_q)
+    activity_multiplier = FREQ_ADJ_BASE + (market_eff * FREQ_ADJ_SENSITIVITY)
+
+    # ── target_bars_per_day ───────────────────────────────────────────────────
+    base_bpd = VOLUME_TIER_BASE_BARS.get(asset_tier, VOLUME_TIER_BASE_BARS_DEFAULT)
+    target_bpd = max(BARS_PER_DAY_MIN,
+                     min(BARS_PER_DAY_MAX,
+                         base_bpd * information_multiplier * activity_multiplier
+                         / SLOW_BAR_FREQUENCY_MULTIPLIER))
+
+    target_volume = median_daily_vol / target_bpd
+
+    # ── ema_alpha ─────────────────────────────────────────────────────────────
+    regime_stability = _tick_regime_stability(log_ret)
+    market_noise     = _tick_market_noise(log_ret)
+    alpha_min, alpha_max, ema_alpha = _alpha_from_cv(
+        volume_cv, regime_stability, market_noise)
+    # clamp to absolute bounds
+    alpha_min  = max(alpha_min,  ALPHA_MIN_ABSOLUTE)
+    alpha_max  = min(alpha_max,  ALPHA_MAX_ABSOLUTE)
+    ema_alpha  = max(alpha_min,  min(alpha_max, ema_alpha))
+
+    min_s, max_s = _duration_seconds_from_bpd(
+        target_bpd, TICK_MIN_DURATION_SECONDS,
+        TICK_MAX_DURATION_FLOOR_SECONDS, TICK_MAX_DURATION_SECONDS,
+        DURATION_ESTIMATED_MULTIPLIER)
+
+    extreme_threshold = target_volume * VOLUME_EXTREME_THRESHOLD_MULTIPLIER
+
+    del cal_p, cal_q, cal_ts_ms; gc.collect()
+
     logger.info(
-        "  Calibrating volume bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days
-    )
+        "  Volume calibration done — target=%.4f BTC  bars/day=%.1f  "
+        "tier=%s  alpha=%.3f  [TICK-NATIVE]",
+        target_volume, target_bpd, asset_tier, ema_alpha)
 
-    minute_bars = _ticks_to_minute_ohlcv(
-        cal_p.astype(np.float64), cal_q.astype(np.float64), cal_ts_ms
-    )
-    del cal_p, cal_q, cal_ts_ms
-    gc.collect()
+    return {
+        "target_volume":          target_volume,
+        "ema_alpha":              ema_alpha,
+        "alpha_min":              alpha_min,
+        "alpha_max":              alpha_max,
+        "target_bars_per_day":    target_bpd,
+        "min_duration_seconds":   min_s,
+        "max_duration_seconds":   max_s,
+        "asset_tier":             asset_tier,
+        "volume_cv":              volume_cv,
+        "median_daily_volume":    median_daily_vol,
+        "regime_stability":       regime_stability,
+        "market_noise":           market_noise,
+        "information_ratio":      information_ratio,
+        "market_efficiency":      market_eff,
+        "extreme_threshold":      extreme_threshold,
+        "bars_completed":         0,
+        "monitoring_counter":     0,
+        "bars_since_optimization":0,
+        "target_volume_history":  [],
+        "optimization_events":    [],
+    }
 
-    market_params = bar_processor.analyze_market_history(minute_bars)
-    del minute_bars
-    gc.collect()
 
-    # Add tick-specific duration bounds (minute-bar params use minutes)
-    estimated_bar_seconds = 86_400.0 / market_params.get("target_bars_per_day", 6)
-    market_params["min_duration_seconds"] = TICK_MIN_DURATION_SECONDS
-    market_params["max_duration_seconds"] = max(
-        TICK_MAX_DURATION_FLOOR_SECONDS,
-        min(TICK_MAX_DURATION_SECONDS, int(estimated_bar_seconds * 3)),
-    )
-    logger.info(
-        "  Volume calibration done — target=%.4f BTC  bars/day=%.1f  tier=%s  alpha=%.3f",
-        market_params["target_volume"],
-        market_params["target_bars_per_day"],
-        market_params["asset_tier"],
-        market_params["ema_alpha"],
-    )
-    return market_params
 
 
 def process_chunk(

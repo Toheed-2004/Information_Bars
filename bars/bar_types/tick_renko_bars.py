@@ -77,6 +77,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
+from common import *
 
 import numpy as np
 
@@ -331,73 +332,125 @@ def _finalize_bar(raw: dict, market_params: dict) -> dict:
 # Tick entry points (called by run.py)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-
-def calibrate(
-    bar_processor: RenkoBar,
-    csv_path: Path,
-    gather_fn: Callable,
-) -> dict:
+def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     """
-    Calibrate RenkoBar from the first ANALYSIS_LOOKBACK_DAYS of tick data.
+    Tick-native calibration for renko bars.
 
-    Flow: ticks → synthetic 1-minute OHLCV → RenkoBar.analyze_market_history()
+    - target_brick_size   = median(daily H-L / median_close) / target_bars_per_day
+                            uses exact tick highs/lows and individual trade prices
+    - target_bars_per_day = f(log-return entropy, market efficiency)
+    - ema_alpha           = f(daily range CV, regime stability, noise)
+    No minute bucketing anywhere.
 
-    RenkoBar.analyze_market_history() expects dicts with keys:
-        datetime, open, high, low, close, volume
-    — exactly what _ticks_to_minute_ohlcv produces.
-
-    After calibration the minute-based duration keys are replaced with
-    tick-specific second equivalents.  The minute keys are kept in
-    market_params with their calibrated values so that RenkoBar's
-    optimisation methods (_calculate_bar_quality, _apply_optimization_strategy)
-    which read "duration_minutes" from finalized bars continue to work.
-
-    renko_reference is seeded from the last calibration close and persisted
-    into market_params so process_chunk can restore it on the first chunk.
+    renko_reference is seeded from the last calibration tick price so
+    process_chunk can restore it on the first chunk — identical to before.
     """
+    from common.constants import (
+        ANALYSIS_LOOKBACK_DAYS, BARS_PER_DAY_MIN, BARS_PER_DAY_MAX,
+        RENKO_BASE_FREQUENCY, SLOW_BAR_FREQUENCY_MULTIPLIER,
+        DURATION_ESTIMATED_MULTIPLIER, ALPHA_MIN_ABSOLUTE, ALPHA_MAX_ABSOLUTE,
+    )
+    from common.logging import get_logger
+    logger = get_logger(__name__)
+
+    TICK_MIN_DURATION_SECONDS       = 10
+    TICK_MAX_DURATION_SECONDS       = 28_800
+    TICK_MAX_DURATION_FLOOR_SECONDS = 300
+
     cal_p, cal_q, cal_ts_ms, _ = gather_fn(csv_path, ANALYSIS_LOOKBACK_DAYS)
-    n_days = max(
-        1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // (86_400 * 1_000)) + 1
-    )
+    n_days = max(1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // _MS_PER_DAY) + 1)
+    logger.info("  Calibrating renko bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days)
+
+    prices_f64 = cal_p.astype(np.float64)
+    log_ret    = _tick_log_returns(prices_f64)
+    if len(log_ret) < 100:
+        logger.warning("  Insufficient log-returns — using defaults")
+        del cal_p, cal_q, cal_ts_ms; gc.collect()
+        return bar_processor._get_default_params()
+
+    # ── information multiplier ────────────────────────────────────────────────
+    ret_entropy  = _tick_entropy(log_ret)
+    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
+    information_multiplier = max(0.5, min(2.0, information_ratio))
+
+    # ── activity multiplier ───────────────────────────────────────────────────
+    market_eff          = _tick_market_efficiency(cal_p, cal_q)
+    activity_percentile = max(0.0, min(1.0, market_eff))
+    activity_multiplier = 0.5 + activity_percentile
+
+    # ── target_bars_per_day ───────────────────────────────────────────────────
+    target_bpd = max(BARS_PER_DAY_MIN,
+                     min(BARS_PER_DAY_MAX,
+                         RENKO_BASE_FREQUENCY
+                         * information_multiplier * activity_multiplier
+                         / SLOW_BAR_FREQUENCY_MULTIPLIER))
+
+    # ── tick-native daily range: (day_high - day_low) / median(day_closes) ───
+    # Mirrors renko minute logic but uses exact tick prices per day.
+    day_idx     = _tick_daily_split(cal_ts_ms)
+    unique_days = np.unique(day_idx)
+    daily_rel_ranges = []
+    for d in unique_days:
+        mask       = day_idx == d
+        day_prices = prices_f64[mask]
+        if len(day_prices) == 0:
+            continue
+        med_close = float(np.median(day_prices))
+        if med_close > 0:
+            daily_rel_ranges.append((day_prices.max() - day_prices.min()) / med_close)
+    daily_rel_ranges = np.array(daily_rel_ranges, dtype=np.float64)
+
+    median_daily_range  = float(np.median(daily_rel_ranges))
+    mad_range           = float(np.median(np.abs(daily_rel_ranges - median_daily_range)))
+    range_cv            = mad_range / median_daily_range if median_daily_range > 0 else 0.3
+
+    target_brick_size = median_daily_range / max(1.0, target_bpd)
+
+    # ── ema_alpha ─────────────────────────────────────────────────────────────
+    regime_stability = _tick_regime_stability(log_ret)
+    market_noise     = _tick_market_noise(log_ret)
+    alpha_min, alpha_max, ema_alpha = _alpha_from_cv(range_cv, regime_stability, market_noise)
+    alpha_min = max(alpha_min, ALPHA_MIN_ABSOLUTE)
+    alpha_max = min(alpha_max, ALPHA_MAX_ABSOLUTE)
+    ema_alpha = max(alpha_min, min(alpha_max, ema_alpha))
+
+    min_s, max_s = _duration_seconds_from_bpd(
+        target_bpd, TICK_MIN_DURATION_SECONDS,
+        TICK_MAX_DURATION_FLOOR_SECONDS, TICK_MAX_DURATION_SECONDS,
+        DURATION_ESTIMATED_MULTIPLIER)
+
+    # seed renko_reference from last calibration tick — identical to before
+    bar_processor.renko_reference = float(prices_f64[-1]) if len(prices_f64) > 0 else None
+
+    del cal_p, cal_q, cal_ts_ms; gc.collect()
+
     logger.info(
-        "  Calibrating renko bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days
-    )
+        "  Renko calibration done — brick_size=%.6f (%.4f%%)  "
+        "bars/day=%.1f  alpha=%.3f  [TICK-NATIVE]",
+        target_brick_size, target_brick_size * 100, target_bpd, ema_alpha)
 
-    minute_bars = _ticks_to_minute_ohlcv(
-        cal_p.astype(np.float64), cal_q.astype(np.float64), cal_ts_ms
-    )
-    del cal_p, cal_q, cal_ts_ms
-    gc.collect()
-
-    market_params = bar_processor.analyze_market_history(minute_bars)
-    del minute_bars
-    gc.collect()
-
-    # ── Inject tick-specific duration bounds (seconds) ─────────────────────────
-    # The minute-bar pipeline sets min/max_duration_MINUTES.  At tick resolution
-    # bars close in seconds.  We add _seconds keys consumed by process_chunk
-    # while leaving the _minutes keys intact for the optimisation methods.
-    estimated_bar_seconds = 86_400.0 / max(
-        1.0, market_params.get("target_bars_per_day", 4.0)
-    )
-    market_params["min_duration_seconds"] = TICK_MIN_DURATION_SECONDS
-    market_params["max_duration_seconds"] = max(
-        TICK_MAX_DURATION_FLOOR_SECONDS,
-        min(TICK_MAX_DURATION_SECONDS, int(estimated_bar_seconds * 3)),
-    )
-
-    # Persist renko_reference so process_chunk can restore it on the first chunk
-    market_params["renko_reference"] = bar_processor.renko_reference
-
-    logger.info(
-        "  Renko calibration done — "
-        "brick_size=%.6f (%.4f%%)  bars/day=%.1f  alpha=%.3f",
-        market_params["target_brick_size"],
-        market_params["target_brick_size"] * 100,
-        market_params["target_bars_per_day"],
-        market_params["ema_alpha"],
-    )
-    return market_params
+    return {
+        "target_brick_size":      target_brick_size,
+        "ema_alpha":              ema_alpha,
+        "alpha_min":              alpha_min,
+        "alpha_max":              alpha_max,
+        "target_bars_per_day":    target_bpd,
+        "min_duration_seconds":   min_s,
+        "max_duration_seconds":   max_s,
+        "range_cv":               range_cv,
+        "median_daily_range":     median_daily_range,
+        "regime_stability":       regime_stability,
+        "market_noise":           market_noise,
+        "information_ratio":      information_ratio,
+        "market_efficiency":      market_eff,
+        "renko_reference":        bar_processor.renko_reference,
+        "bars_completed":         0,
+        "monitoring_counter":     0,
+        "bars_since_optimization":0,
+        "target_volume_history":  [],
+        "optimization_events":    [],
+    }
 
 
 def process_chunk(

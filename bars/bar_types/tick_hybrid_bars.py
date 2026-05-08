@@ -81,6 +81,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
+from common import *
 
 import numpy as np
 
@@ -186,59 +187,136 @@ def _finalize_hybrid_bar(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def calibrate(
-    bar_processor: HybridBar,
-    csv_path: Path,
-    gather_fn: Callable,
-) -> dict:
+def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     """
-    Two-step calibration:
-      1. ticks → 1-min OHLCV → HybridBar.analyze_market_history() for
-         target_bars_per_day, target_dollar_volume, ema_alpha, duration bounds.
-      2. Replace target_volatility with tick-native realized vol target.
+    Tick-native calibration for hybrid bars.
+
+    Both thresholds computed from raw ticks:
+    - target_dollar_volume = median(daily Σ(p×q)) / target_bars_per_day
+    - target_volatility    = median(daily realized vol) / target_bars_per_day
+    - target_bars_per_day  = f(log-return entropy, market efficiency, asset tier)
+    - ema_alpha            = f(daily DV CV, regime stability, noise)
+    No minute bucketing anywhere.
     """
+    from common.constants import (
+        ANALYSIS_LOOKBACK_DAYS, BARS_PER_DAY_MIN, BARS_PER_DAY_MAX,
+        HYBRID_BASE_FREQUENCY, SLOW_BAR_FREQUENCY_MULTIPLIER,
+        FREQ_ADJ_BASE, FREQ_ADJ_SENSITIVITY,
+        DURATION_ESTIMATED_MULTIPLIER, ALPHA_MIN_ABSOLUTE, ALPHA_MAX_ABSOLUTE,
+        DOLLAR_TIER1_BASE, DOLLAR_TIER2_BASE,
+        DOLLAR_TIER_INFLATION_BASE_YEAR, DOLLAR_TIER_INFLATION_RATE,
+        DOLLAR_TIER_BASE_BARS, BAR_FREQUENCY_MULTIPLIER,
+        EXTREME_THRESHOLD_MULTIPLIER,
+    )
+    from datetime import datetime
+    from common.logging import get_logger
+    logger = get_logger(__name__)
+
+    TICK_MIN_DURATION_SECONDS       = 10
+    TICK_MAX_DURATION_SECONDS       = 28_800
+    TICK_MAX_DURATION_FLOOR_SECONDS = 300
+
     cal_p, cal_q, cal_ts_ms, _ = gather_fn(csv_path, ANALYSIS_LOOKBACK_DAYS)
-    n_days = max(
-        1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // (86_400 * 1_000)) + 1
-    )
+    n_days = max(1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // _MS_PER_DAY) + 1)
+    logger.info("  Calibrating hybrid bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days)
+
+    prices_f64 = cal_p.astype(np.float64)
+    log_ret    = _tick_log_returns(prices_f64)
+    if len(log_ret) < 100:
+        logger.warning("  Insufficient log-returns — using defaults")
+        del cal_p, cal_q, cal_ts_ms; gc.collect()
+        return bar_processor._get_default_params()
+
+    # ── daily dollar volume ───────────────────────────────────────────────────
+    dv_per_tick = prices_f64 * cal_q.astype(np.float64)
+    day_idx     = _tick_daily_split(cal_ts_ms)
+    daily_dv, _ = _tick_daily_metric(dv_per_tick, day_idx)
+
+    median_daily_dv = float(np.median(daily_dv))
+    mad_dv          = float(np.median(np.abs(daily_dv - median_daily_dv)))
+    dv_cv           = mad_dv / median_daily_dv if median_daily_dv > 0 else 0.3
+
+    # ── asset tier ────────────────────────────────────────────────────────────
+    inflation = (datetime.now().year - DOLLAR_TIER_INFLATION_BASE_YEAR) \
+                * DOLLAR_TIER_INFLATION_RATE + 1.0
+    if median_daily_dv >= DOLLAR_TIER1_BASE * inflation:
+        asset_tier = "tier1"
+    elif median_daily_dv >= DOLLAR_TIER2_BASE * inflation:
+        asset_tier = "tier2"
+    else:
+        asset_tier = "tier3"
+
+    # ── information multiplier ────────────────────────────────────────────────
+    ret_entropy  = _tick_entropy(log_ret)
+    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
+    information_multiplier = max(0.5, min(2.0, information_ratio))
+
+    # ── activity / frequency multiplier ──────────────────────────────────────
+    market_eff  = _tick_market_efficiency(cal_p, cal_q)
+    freq_adj    = FREQ_ADJ_BASE + (market_eff * FREQ_ADJ_SENSITIVITY)
+
+    # ── target_bars_per_day (dollar-style, matches TickDollarBar) ─────────────
+    base_bpd   = DOLLAR_TIER_BASE_BARS.get(asset_tier, 3.4)
+    target_bpd = max(BARS_PER_DAY_MIN,
+                     min(BARS_PER_DAY_MAX,
+                         base_bpd * information_multiplier * freq_adj
+                         / BAR_FREQUENCY_MULTIPLIER))
+
+    target_dollar_volume = median_daily_dv / max(1.0, target_bpd)
+
+    # ── tick-native daily realized volatility ─────────────────────────────────
+    abs_lr_full = np.abs(np.diff(np.log(np.where(prices_f64 > 0, prices_f64, np.nan))))
+    abs_lr_full = np.nan_to_num(abs_lr_full, nan=0.0)
+    daily_rv, _ = _tick_daily_metric(abs_lr_full, day_idx[1:])
+    median_daily_rv = float(np.median(daily_rv))
+    target_volatility = median_daily_rv / max(1.0, target_bpd)
+
+    # ── ema_alpha ─────────────────────────────────────────────────────────────
+    regime_stability = _tick_regime_stability(log_ret)
+    market_noise     = _tick_market_noise(log_ret)
+    alpha_min, alpha_max, ema_alpha = _alpha_from_cv(dv_cv, regime_stability, market_noise)
+    alpha_min = max(alpha_min, ALPHA_MIN_ABSOLUTE)
+    alpha_max = min(alpha_max, ALPHA_MAX_ABSOLUTE)
+    ema_alpha = max(alpha_min, min(alpha_max, ema_alpha))
+
+    min_s, max_s = _duration_seconds_from_bpd(
+        target_bpd, TICK_MIN_DURATION_SECONDS,
+        TICK_MAX_DURATION_FLOOR_SECONDS, TICK_MAX_DURATION_SECONDS,
+        DURATION_ESTIMATED_MULTIPLIER)
+
+    del cal_p, cal_q, cal_ts_ms; gc.collect()
+
     logger.info(
-        "  Calibrating hybrid bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days
-    )
+        "  Hybrid calibration done — target_dv=$%.0f  tick_vol=%.6f (%.4f%%)  "
+        "bars/day=%.1f  alpha=%.3f  [TICK-NATIVE]",
+        target_dollar_volume, target_volatility,
+        target_volatility * 100, target_bpd, ema_alpha)
 
-    minute_bars = _ticks_to_minute_ohlcv_for_calibration(
-        cal_p.astype(np.float64), cal_q.astype(np.float64), cal_ts_ms
-    )
-    market_params = bar_processor.analyze_market_history(minute_bars)
-    del minute_bars
-    gc.collect()
-
-    # Replace minute-based target_volatility with tick-native realized vol
-    daily_rv = _compute_daily_realized_vol(cal_p.astype(np.float64), cal_ts_ms)
-    del cal_p, cal_q, cal_ts_ms
-    gc.collect()
-
-    target_bpd = max(1.0, market_params.get("target_bars_per_day", 8.0))
-    tick_vol_target = float(np.median(daily_rv)) / target_bpd
-    market_params["target_volatility"] = tick_vol_target
-
-    estimated_bar_seconds = 86_400.0 / target_bpd
-    market_params["min_duration_seconds"] = TICK_MIN_DURATION_SECONDS
-    market_params["max_duration_seconds"] = max(
-        TICK_MAX_DURATION_FLOOR_SECONDS,
-        min(TICK_MAX_DURATION_SECONDS, int(estimated_bar_seconds * 3)),
-    )
-    market_params["previous_price"] = None
-    logger.info(
-        "  Hybrid calibration done — "
-        "target_dv=$%.0f  tick_vol=%.6f (%.4f%%)  bars/day=%.1f  alpha=%.3f",
-        market_params["target_dollar_volume"],
-        tick_vol_target,
-        tick_vol_target * 100,
-        target_bpd,
-        market_params["ema_alpha"],
-    )
-    return market_params
-
+    return {
+        "target_dollar_volume":   target_dollar_volume,
+        "target_volatility":      target_volatility,
+        "ema_alpha":              ema_alpha,
+        "alpha_min":              alpha_min,
+        "alpha_max":              alpha_max,
+        "target_bars_per_day":    target_bpd,
+        "min_duration_seconds":   min_s,
+        "max_duration_seconds":   max_s,
+        "asset_tier":             asset_tier,
+        "dv_cv":                  dv_cv,
+        "median_daily_dv":        median_daily_dv,
+        "regime_stability":       regime_stability,
+        "market_noise":           market_noise,
+        "information_ratio":      information_ratio,
+        "market_efficiency":      market_eff,
+        "extreme_threshold":      target_dollar_volume * EXTREME_THRESHOLD_MULTIPLIER,
+        "previous_price":         None,
+        "bars_completed":         0,
+        "monitoring_counter":     0,
+        "bars_since_optimization":0,
+        "target_volume_history":  [],
+        "optimization_events":    [],
+    }
 
 def process_chunk(
     prices: np.ndarray,

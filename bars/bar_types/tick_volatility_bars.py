@@ -83,6 +83,7 @@ import numpy as np
 from common.logging import get_logger
 from common.constants import ANALYSIS_LOOKBACK_DAYS
 from .base import BaseBar as VolatilityBar
+from common import *
 
 logger = get_logger(__name__)
 
@@ -477,57 +478,113 @@ def _rv_process_chunk_inner(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def calibrate(
-    bar_processor: VolatilityBar,
-    csv_path: Path,
-    gather_fn: Callable,
-) -> dict:
+def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     """
-    Two-step calibration:
-      1. ticks → 1-min OHLCV → analyze_market_history() for freq/alpha/duration.
-      2. daily tick realized vol → replace target_volatility with tick-native value.
+    Tick-native calibration for volatility bars.
+
+    - target_volatility   = median(daily_realized_vol) / target_bars_per_day
+                            computed from raw ticks (already done before, kept)
+    - target_bars_per_day = f(log-return entropy, market efficiency)
+    - ema_alpha           = f(daily realized-vol CV, regime stability, noise)
+    No minute bucketing anywhere.
     """
+    from common.constants import (
+        ANALYSIS_LOOKBACK_DAYS, BARS_PER_DAY_MIN, BARS_PER_DAY_MAX,
+        VOLATILITY_BASE_FREQUENCY, SLOW_BAR_FREQUENCY_MULTIPLIER,
+        DURATION_ESTIMATED_MULTIPLIER, ALPHA_MIN_ABSOLUTE, ALPHA_MAX_ABSOLUTE,
+    )
+    from common.logging import get_logger
+    logger = get_logger(__name__)
+
+    TICK_MIN_DURATION_SECONDS       = 10
+    TICK_MAX_DURATION_SECONDS       = 28_800
+    TICK_MAX_DURATION_FLOOR_SECONDS = 300
+
     cal_p, cal_q, cal_ts_ms, _ = gather_fn(csv_path, ANALYSIS_LOOKBACK_DAYS)
-    n_days = max(
-        1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // (86_400 * 1_000)) + 1
-    )
+    n_days = max(1, int((int(cal_ts_ms[-1]) - int(cal_ts_ms[0])) // _MS_PER_DAY) + 1)
+    logger.info("  Calibrating volatility bars from %d ticks (%d days) ...", len(cal_ts_ms), n_days)
+
+    log_ret = _tick_log_returns(cal_p.astype(np.float64))
+    if len(log_ret) < 100:
+        logger.warning("  Insufficient log-returns — using defaults")
+        del cal_p, cal_q, cal_ts_ms; gc.collect()
+        return bar_processor._get_default_params()
+
+    # ── information multiplier ────────────────────────────────────────────────
+    ret_entropy  = _tick_entropy(log_ret)
+    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
+    information_multiplier = max(0.5, min(2.0, information_ratio))
+
+    # ── activity multiplier ───────────────────────────────────────────────────
+    market_eff          = _tick_market_efficiency(cal_p, cal_q)
+    activity_percentile = max(0.0, min(1.0, market_eff))
+    activity_multiplier = 0.5 + activity_percentile
+
+    # ── target_bars_per_day ───────────────────────────────────────────────────
+    target_bpd = max(BARS_PER_DAY_MIN,
+                     min(BARS_PER_DAY_MAX,
+                         VOLATILITY_BASE_FREQUENCY
+                         * information_multiplier * activity_multiplier
+                         / SLOW_BAR_FREQUENCY_MULTIPLIER))
+
+    # ── tick-native daily realized vol ────────────────────────────────────────
+    # Σ|log(p_i/p_{i-1})| per day — same as _compute_daily_realized_vol
+    day_idx    = _tick_daily_split(cal_ts_ms)
+    prices_f64 = cal_p.astype(np.float64)
+    # log-return per tick aligned to the tick it lands on (index 1..N)
+    abs_lr_full = np.abs(np.diff(np.log(np.where(prices_f64 > 0, prices_f64, np.nan))))
+    abs_lr_full = np.nan_to_num(abs_lr_full, nan=0.0)
+    daily_rv, _ = _tick_daily_metric(abs_lr_full, day_idx[1:])
+
+    median_daily_rv = float(np.median(daily_rv))
+    mad_rv          = float(np.median(np.abs(daily_rv - median_daily_rv)))
+    vol_cv          = mad_rv / median_daily_rv if median_daily_rv > 0 else 0.3
+
+    target_volatility = median_daily_rv / max(1.0, target_bpd)
+
+    # ── ema_alpha ─────────────────────────────────────────────────────────────
+    regime_stability = _tick_regime_stability(log_ret)
+    market_noise     = _tick_market_noise(log_ret)
+    alpha_min, alpha_max, ema_alpha = _alpha_from_cv(vol_cv, regime_stability, market_noise)
+    alpha_min = max(alpha_min, ALPHA_MIN_ABSOLUTE)
+    alpha_max = min(alpha_max, ALPHA_MAX_ABSOLUTE)
+    ema_alpha = max(alpha_min, min(alpha_max, ema_alpha))
+
+    min_s, max_s = _duration_seconds_from_bpd(
+        target_bpd, TICK_MIN_DURATION_SECONDS,
+        TICK_MAX_DURATION_FLOOR_SECONDS, TICK_MAX_DURATION_SECONDS,
+        DURATION_ESTIMATED_MULTIPLIER)
+
+    del cal_p, cal_q, cal_ts_ms; gc.collect()
+
     logger.info(
-        "  Calibrating volatility bars from %d ticks (%d days) ...",
-        len(cal_ts_ms),
-        n_days,
-    )
+        "  Volatility calibration done — tick_target=%.6f (%.4f%%)  "
+        "bars/day=%.1f  alpha=%.3f  [TICK-NATIVE]",
+        target_volatility, target_volatility * 100, target_bpd, ema_alpha)
 
-    minute_bars = _ticks_to_minute_ohlcv_for_calibration(
-        cal_p.astype(np.float64), cal_q.astype(np.float64), cal_ts_ms
-    )
-    market_params = bar_processor.analyze_market_history(minute_bars)
-    del minute_bars
-    gc.collect()
+    return {
+        "target_volatility":      target_volatility,
+        "ema_alpha":              ema_alpha,
+        "alpha_min":              alpha_min,
+        "alpha_max":              alpha_max,
+        "target_bars_per_day":    target_bpd,
+        "min_duration_seconds":   min_s,
+        "max_duration_seconds":   max_s,
+        "volatility_cv":          vol_cv,
+        "median_daily_volatility":median_daily_rv,
+        "regime_stability":       regime_stability,
+        "market_noise":           market_noise,
+        "information_ratio":      information_ratio,
+        "market_efficiency":      market_eff,
+        "previous_price":         None,
+        "bars_completed":         0,
+        "monitoring_counter":     0,
+        "bars_since_optimization":0,
+        "target_volume_history":  [],
+        "optimization_events":    [],
+    }
 
-    daily_rv = _compute_daily_realized_vol(cal_p.astype(np.float64), cal_ts_ms)
-    del cal_p, cal_q, cal_ts_ms
-    gc.collect()
-
-    target_bpd = max(1.0, market_params.get("target_bars_per_day", 4.0))
-    tick_target = float(np.median(daily_rv)) / target_bpd
-    market_params["target_volatility"] = tick_target
-
-    estimated_bar_seconds = 86_400.0 / target_bpd
-    market_params["min_duration_seconds"] = TICK_MIN_DURATION_SECONDS
-    market_params["max_duration_seconds"] = max(
-        TICK_MAX_DURATION_FLOOR_SECONDS,
-        min(TICK_MAX_DURATION_SECONDS, int(estimated_bar_seconds * 3)),
-    )
-    market_params["previous_price"] = None
-
-    logger.info(
-        "  Volatility calibration done — tick target=%.6f (%.4f%%)  bars/day=%.1f  alpha=%.3f",
-        tick_target,
-        tick_target * 100,
-        target_bpd,
-        market_params["ema_alpha"],
-    )
-    return market_params
 
 
 def process_chunk(
