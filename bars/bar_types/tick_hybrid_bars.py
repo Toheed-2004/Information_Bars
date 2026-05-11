@@ -91,7 +91,10 @@ from common.constants import (
     EXTREME_THRESHOLD_MULTIPLIER,
 )
 
-from .base import BaseBar as HybridBar  # type alias: tick_hybrid uses same interface as BaseBar
+# BUG-FIX 4c: import actual HybridBar (not abstract BaseBar).
+# HybridBar.update_market_params has selective EMA logic (only updates
+# the EMA that triggered) — essential for avoiding feedback spirals.
+from .hybrid_bars import HybridBar
 from .tick_volatility_bars import (
     _ms_to_dt,
     _get_precision,
@@ -203,12 +206,10 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
         HYBRID_BASE_FREQUENCY, SLOW_BAR_FREQUENCY_MULTIPLIER,
         FREQ_ADJ_BASE, FREQ_ADJ_SENSITIVITY,
         DURATION_ESTIMATED_MULTIPLIER, ALPHA_MIN_ABSOLUTE, ALPHA_MAX_ABSOLUTE,
-        DOLLAR_TIER1_BASE, DOLLAR_TIER2_BASE,
-        DOLLAR_TIER_INFLATION_BASE_YEAR, DOLLAR_TIER_INFLATION_RATE,
-        DOLLAR_TIER_BASE_BARS, BAR_FREQUENCY_MULTIPLIER,
         EXTREME_THRESHOLD_MULTIPLIER,
     )
-    from datetime import datetime
+    # BUG-FIX B: removed DOLLAR_TIER_BASE_BARS, BAR_FREQUENCY_MULTIPLIER,
+    # DOLLAR_TIER_*, and datetime — hybrid uses HYBRID_BASE_FREQUENCY/SLOW_BAR_FREQ_MULT
     from common.logging import get_logger
     logger = get_logger(__name__)
 
@@ -236,19 +237,11 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     mad_dv          = float(np.median(np.abs(daily_dv - median_daily_dv)))
     dv_cv           = mad_dv / median_daily_dv if median_daily_dv > 0 else 0.3
 
-    # ── asset tier ────────────────────────────────────────────────────────────
-    inflation = (datetime.now().year - DOLLAR_TIER_INFLATION_BASE_YEAR) \
-                * DOLLAR_TIER_INFLATION_RATE + 1.0
-    if median_daily_dv >= DOLLAR_TIER1_BASE * inflation:
-        asset_tier = "tier1"
-    elif median_daily_dv >= DOLLAR_TIER2_BASE * inflation:
-        asset_tier = "tier2"
-    else:
-        asset_tier = "tier3"
-
     # ── information multiplier ────────────────────────────────────────────────
     ret_entropy  = _tick_entropy(log_ret)
-    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    # BUG-FIX 15: fixed seed for reproducible calibration
+    _rng_calib = np.random.default_rng(seed=42)
+    rand_entropy = _tick_entropy(_rng_calib.normal(0, np.std(log_ret), len(log_ret)))
     information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
     information_multiplier = max(0.5, min(2.0, information_ratio))
 
@@ -256,12 +249,15 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     market_eff  = _tick_market_efficiency(cal_p, cal_q)
     freq_adj    = FREQ_ADJ_BASE + (market_eff * FREQ_ADJ_SENSITIVITY)
 
-    # ── target_bars_per_day (dollar-style, matches TickDollarBar) ─────────────
-    base_bpd   = DOLLAR_TIER_BASE_BARS.get(asset_tier, 3.4)
+    # ── target_bars_per_day ───────────────────────────────────────────────────
+    # BUG-FIX B: was using DOLLAR_TIER_BASE_BARS / BAR_FREQUENCY_MULTIPLIER=5.0
+    # which produced 0.68 bpd → clamped to BARS_PER_DAY_MIN=2, making tick
+    # targets 4× too large vs minute pipeline's ~8 bpd. Fix: mirror minute
+    # hybrid formula: HYBRID_BASE_FREQUENCY / SLOW_BAR_FREQUENCY_MULTIPLIER=1.0
     target_bpd = max(BARS_PER_DAY_MIN,
                      min(BARS_PER_DAY_MAX,
-                         base_bpd * information_multiplier * freq_adj
-                         / BAR_FREQUENCY_MULTIPLIER))
+                         HYBRID_BASE_FREQUENCY * information_multiplier * freq_adj
+                         / SLOW_BAR_FREQUENCY_MULTIPLIER))
 
     target_dollar_volume = median_daily_dv / max(1.0, target_bpd)
 
@@ -302,7 +298,6 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
         "target_bars_per_day":    target_bpd,
         "min_duration_seconds":   min_s,
         "max_duration_seconds":   max_s,
-        "asset_tier":             asset_tier,
         "dv_cv":                  dv_cv,
         "median_daily_dv":        median_daily_dv,
         "regime_stability":       regime_stability,
@@ -337,8 +332,9 @@ def process_chunk(
       cum_rv[i]  = Σ|log-return| from bar start through tick (pos+i)
 
     Closing condition (earliest wins):
-      1. AND trigger — cum_dv >= target_dv AND cum_rv >= target_vol AND min_dur met
-      2. Timeout     — elapsed seconds >= max_duration_seconds
+      1. DV trigger  — cum_dv >= target_dv AND min_dur met  (OR: first signal wins)
+      2. Vol trigger — cum_rv >= target_vol AND min_dur met (OR: first signal wins)
+      3. Timeout     — elapsed seconds >= max_duration_seconds
 
     Returns (bars, market_params, open_bar_data, leftover).
     """
@@ -394,7 +390,8 @@ def process_chunk(
         max_s = float(
             market_params.get("max_duration_seconds", TICK_MAX_DURATION_SECONDS)
         )
-        extreme_thr = target_dv * EXTREME_THRESHOLD_MULTIPLIER
+        # extreme_threshold removed: with OR logic the normal dv trigger
+        # fires at target_dv; an extreme check at 3× target_dv is unreachable.
 
         if ts_bar_start is None:
             ts_bar_start = int(timestamps_ms[pos])
@@ -423,26 +420,28 @@ def process_chunk(
 
             dur_s = (ts_slice - ts_bar_start) / 1_000.0
 
-            # AND trigger: both thresholds met + min_duration
-            dv_met_idx = np.where(cum_dv >= target_dv)[0]
+            # OR trigger: first signal to reach its threshold closes the bar
+            # + min_duration must be satisfied after the threshold crossing.
+            dv_met_idx  = np.where(cum_dv >= target_dv)[0]
             vol_met_idx = np.where(cum_rv >= target_vol)[0]
 
-            if len(dv_met_idx) and len(vol_met_idx):
-                # Both thresholds crossed — find the later crossing
-                both_met = max(dv_met_idx[0], vol_met_idx[0])
-                min_met = np.where(dur_s[both_met:] >= min_s)[0]
-                if len(min_met):
-                    bar_end = both_met + min_met[0]
+            # Dollar-volume trigger
+            if len(dv_met_idx):
+                first_dv = dv_met_idx[0]
+                min_met_dv = np.where(dur_s[first_dv:] >= min_s)[0]
+                if len(min_met_dv):
+                    bar_end = first_dv + min_met_dv[0]
 
-            # Extreme dollar-volume trigger (single-signal override)
-            ext_idx = np.where(cum_dv >= extreme_thr)[0]
-            if len(ext_idx):
-                first_ext = ext_idx[0]
-                if dur_s[first_ext] >= min_s * 0.5:
-                    if bar_end is None or first_ext < bar_end:
-                        bar_end = first_ext
+            # Volatility trigger — take the earlier of the two
+            if len(vol_met_idx):
+                first_vol = vol_met_idx[0]
+                min_met_vol = np.where(dur_s[first_vol:] >= min_s)[0]
+                if len(min_met_vol):
+                    vol_bar_end = first_vol + min_met_vol[0]
+                    if bar_end is None or vol_bar_end < bar_end:
+                        bar_end = vol_bar_end
 
-            # Timeout trigger
+            # Timeout trigger — always overrides if earlier
             to_idx = np.where(dur_s >= max_s)[0]
             if len(to_idx):
                 first_to = to_idx[0]
@@ -564,3 +563,13 @@ def process_chunk(
     market_params["previous_price"] = prev_price
     open_bar_data = {}
     return bars, market_params, open_bar_data, {}
+
+# ── BUG-FIX 1 (companion): TickHybridBar class for registry ──────────────────
+class TickHybridBar(HybridBar):
+    """
+    Tick-level hybrid bar processor.
+    Inherits HybridBar for selective EMA update and quality-assessment.
+    The tick-native calibrate() and process_chunk() compute both
+    dollar-volume and realized-volatility signals at tick resolution.
+    """
+    pass

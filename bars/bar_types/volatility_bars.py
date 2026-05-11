@@ -61,7 +61,13 @@ class VolatilityBar(BaseBar):
 
         # Information-based bars per day
         return_entropy = self._calculate_entropy(minute_returns.tolist())
-        random_returns = np.random.normal(0, np.std(minute_returns), len(minute_returns))
+        # BUG-FIX 15: Use a fixed seed for the reference random distribution so
+        # calibration is reproducible. The original code used np.random without a
+        # seed, causing random_entropy to vary ±1.3% across runs on the same data.
+        # This made information_ratio (and therefore target_bars_per_day) non-
+        # deterministic — two identical runs could produce different bar counts.
+        _rng_calib = np.random.default_rng(seed=42)
+        random_returns = _rng_calib.normal(0, np.std(minute_returns), len(minute_returns))
         random_entropy = self._calculate_entropy(random_returns.tolist())
         information_ratio = (
             return_entropy / random_entropy

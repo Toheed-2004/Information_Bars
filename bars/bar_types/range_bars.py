@@ -82,8 +82,10 @@ class RangeBar(BaseBar):
             return self._get_default_params()
 
         return_entropy = self._calculate_entropy(minute_returns.tolist())
+        # BUG-FIX 15: Fixed seed for reproducible calibration
+        _rng_calib = np.random.default_rng(seed=42)
         random_entropy = self._calculate_entropy(
-            np.random.normal(0, np.std(minute_returns), len(minute_returns)).tolist()
+            _rng_calib.normal(0, np.std(minute_returns), len(minute_returns)).tolist()
         )
         information_ratio = (
             return_entropy / random_entropy

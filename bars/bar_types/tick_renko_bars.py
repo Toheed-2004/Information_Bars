@@ -83,7 +83,10 @@ import numpy as np
 
 from common.logging import get_logger
 from common.constants import ANALYSIS_LOOKBACK_DAYS
-from .base import BaseBar as RenkoBar
+# BUG-FIX 4b: import actual RenkoBar (not abstract BaseBar).
+# BUG-FIX 12: _MS_PER_DAY used in calibrate() — define locally.
+from .renko_bars import RenkoBar
+_MS_PER_DAY = 86_400 * 1_000
 
 logger = get_logger(__name__)
 
@@ -370,7 +373,9 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
 
     # ── information multiplier ────────────────────────────────────────────────
     ret_entropy  = _tick_entropy(log_ret)
-    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    # BUG-FIX 15: fixed seed for reproducible tick calibration
+    _rng_calib = np.random.default_rng(seed=42)
+    rand_entropy = _tick_entropy(_rng_calib.normal(0, np.std(log_ret), len(log_ret)))
     information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
     information_multiplier = max(0.5, min(2.0, information_ratio))
 
@@ -608,3 +613,13 @@ def process_chunk(
         else {}
     )
     return bars, market_params, leftover
+
+# ── BUG-FIX 1 (companion): TickRenkoBar class for registry ───────────────────
+class TickRenkoBar(RenkoBar):
+    """
+    Tick-level renko bar processor.
+    Inherits RenkoBar for EMA and quality-assessment methods.
+    The tick-native calibrate() and process_chunk() check displacement
+    |price - reference|/reference after every tick.
+    """
+    pass

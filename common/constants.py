@@ -74,12 +74,17 @@ RENKO_BASE_FREQUENCY = 6.0             # Lower = larger bricks (fewer bars).
 
 # ============================================================================
 # Hybrid bar — dollar-volume + volatility composite
-#   Closes when BOTH dollar-volume AND volatility targets are hit.
-#   Because AND is harder to satisfy than OR, each individual signal must
-#   target a higher frequency so the combined AND rate stays at a useful level.
-#   Uses SLOW_BAR_FREQUENCY_MULTIPLIER (1.0) so the base frequency is not
-#   divided away.  With DV/vol correlation ~0.5–0.7 in crypto, the effective
-#   AND rate is roughly HYBRID_BASE_FREQUENCY × correlation ≈ 4–6 bars/day.
+#   Closes when EITHER dollar-volume OR volatility target is first hit (OR logic).
+#   OR is used because AND produces >60 % timeout rate at BTC DV/vol correlation
+#   (ρ ≈ 0.5–0.7), making bars structurally identical to fixed-interval time bars.
+#   OR gives ~65 % organic close rate (at ρ=0.6), preserving the information-
+#   sampling advantage of non-uniform bars.
+#
+#   Uses SLOW_BAR_FREQUENCY_MULTIPLIER (1.0) — same formula as volatility/range/renko.
+#   target_bpd = HYBRID_BASE_FREQUENCY × info_factor × freq_adj / SLOW_BAR_FREQ_MULT
+#   At typical values (info=1.0, freq_adj=1.0): target_bpd ≈ 8.0 bars/day.
+#   Each individual threshold (dv, vol) is calibrated at 8 bpd; OR fires when
+#   the first one is reached, so observed bars/day ≈ 8.
 # ============================================================================
 HYBRID_BASE_FREQUENCY = 8.0
 

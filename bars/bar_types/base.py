@@ -166,13 +166,26 @@ class BaseBar(ABC):
         return duration_min >= min_dur, duration_min >= max_dur, duration_min
 
     def _perform_self_monitoring(self, market_params: Dict[str, Any]) -> Dict[str, Any]:
-        """Adapt EMA alpha using TARGET_KEY history (called every N bars)."""
+        """Adapt EMA alpha using TARGET_KEY history (called every N bars).
+
+        BUG-FIX 7: Use a per-type history key derived from TARGET_KEY instead of
+        the hardcoded "target_volume_history". The original code stored the
+        target history under the same key regardless of bar type, so dollar bars
+        (TARGET_KEY="target_dollar_volume") and volatility bars
+        (TARGET_KEY="target_volatility") shared one history list. The alpha
+        adaptation logic read from "target_volume_history" which existed in
+        default_params for all types, but may have stale or cross-type values
+        after state restore. Using a type-specific key isolates each bar type's
+        adaptation history correctly.
+        """
         market_params = dict(market_params)
-        history = list(market_params.get("target_volume_history", []))
+        # BUG-FIX 7: use per-type key so each bar type adapts its own history
+        history_key = f"{self.TARGET_KEY}_history"
+        history = list(market_params.get(history_key, []))
         history.append(market_params.get(self.TARGET_KEY, 0))
         if len(history) > QUALITY_HISTORY_LENGTH:
             history = history[-QUALITY_HISTORY_LENGTH:]
-        market_params["target_volume_history"] = history
+        market_params[history_key] = history
 
         if len(history) >= 5:
             targets = np.array(history, dtype=float)

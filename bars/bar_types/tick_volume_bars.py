@@ -49,7 +49,12 @@ from pathlib import Path
 from typing import Callable, Optional
 from common import *
 
-from .base import BaseBar as VolumeBar
+# BUG-FIX 2: import the actual VolumeBar (not abstract BaseBar) so
+# bar_processor.update_market_params uses spike-capped bidirectional EMA.
+# BUG-FIX 12: define _MS_PER_DAY locally (was undefined, causing NameError
+# in calibrate() which uses n_days calculation).
+from .volume_bars import VolumeBar
+_MS_PER_DAY = 86_400 * 1_000  # milliseconds per day
 
 import numpy as np
 
@@ -324,7 +329,9 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
         return bar_processor._get_default_params()
 
     ret_entropy  = _tick_entropy(log_ret)
-    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    # BUG-FIX 15: fixed seed for reproducible tick calibration
+    _rng_calib = np.random.default_rng(seed=42)
+    rand_entropy = _tick_entropy(_rng_calib.normal(0, np.std(log_ret), len(log_ret)))
     information_ratio = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
     information_multiplier = max(0.5, min(2.0, information_ratio))
 
@@ -468,3 +475,16 @@ def process_chunk(
         else {}
     )
     return bars, market_params, leftover
+
+# ── BUG-FIX 1 (companion): TickVolumeBar class for registry ──────────────────
+# __init__.py imports TickVolumeBar from this module. Previously that import
+# was commented out and VolumeBar was aliased as TickVolumeBar instead. Now
+# we expose the correct class here.
+class TickVolumeBar(VolumeBar):
+    """
+    Tick-level volume bar processor.
+    Inherits VolumeBar for EMA and quality-assessment methods.
+    The tick-native calibrate() and process_chunk() entry points in this
+    module are used by processor.py instead of the minute-bar class methods.
+    """
+    pass

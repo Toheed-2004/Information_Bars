@@ -82,7 +82,10 @@ import numpy as np
 
 from common.logging import get_logger
 from common.constants import ANALYSIS_LOOKBACK_DAYS
-from .base import BaseBar as VolatilityBar
+# BUG-FIX 3: import actual VolatilityBar (not abstract BaseBar).
+# BUG-FIX 12: _MS_PER_DAY used in calibrate() n_days calculation.
+from .volatility_bars import VolatilityBar
+_MS_PER_DAY = 86_400 * 1_000  # milliseconds per day
 from common import *
 
 logger = get_logger(__name__)
@@ -512,7 +515,9 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
 
     # ── information multiplier ────────────────────────────────────────────────
     ret_entropy  = _tick_entropy(log_ret)
-    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    # BUG-FIX 15: fixed seed for reproducible tick calibration
+    _rng_calib = np.random.default_rng(seed=42)
+    rand_entropy = _tick_entropy(_rng_calib.normal(0, np.std(log_ret), len(log_ret)))
     information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
     information_multiplier = max(0.5, min(2.0, information_ratio))
 
@@ -627,3 +632,13 @@ def process_chunk(
     # which the inner loop handles by continuing; on normal exit pos == n.
     leftover: dict = {}
     return bars, market_params, open_bar_data, leftover
+
+# ── BUG-FIX 1 (companion): TickVolatilityBar class for registry ──────────────
+class TickVolatilityBar(VolatilityBar):
+    """
+    Tick-level volatility bar processor.
+    Inherits VolatilityBar for EMA and quality-assessment methods.
+    The tick-native calibrate() and process_chunk() entry points use
+    realized volatility Σ|log(p_i/p_{i-1})| instead of minute close-to-close.
+    """
+    pass

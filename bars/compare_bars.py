@@ -129,25 +129,57 @@ YELLOW = "#FACC15"
 
 plt.rcParams.update(
     {
-        "figure.facecolor": "white",
-        "axes.facecolor": "#F5F5F5",
-        "axes.edgecolor": "#AAAAAA",
-        "axes.labelcolor": "#1A1A1A",
-        "axes.titlecolor": "#1A1A1A",
-        "axes.titlesize": 18,
-        "axes.labelsize": 16,
-        "xtick.color": "#555555",
-        "ytick.color": "#555555",
-        "xtick.labelsize": 14,
-        "ytick.labelsize": 14,
-        "grid.color": "#CCCCCC",
-        "grid.linewidth": 0.4,
-        "text.color": "#1A1A1A",
-        "legend.facecolor": "white",
-        "legend.edgecolor": "#AAAAAA",
-        "legend.fontsize": 14,
-        "font.family": "DejaVu Sans",
-        "figure.dpi": 300,
+        # ── Figure & background ──────────────────────────────────────────
+        "figure.facecolor":      "white",
+        "figure.dpi":            300,
+        "savefig.dpi":           300,
+        "savefig.bbox":          "tight",
+        "savefig.facecolor":     "white",
+        # ── Font — Times New Roman preferred (journal serif standard) ────
+        "font.family":           "serif",
+        "font.serif":            ["Times New Roman", "DejaVu Serif", "serif"],
+        "font.weight":           "bold",
+        "text.color":            "#1A1A1A",
+        # ── Axes ─────────────────────────────────────────────────────────
+        "axes.facecolor":        "#F5F5F5",
+        "axes.edgecolor":        "#333333",
+        "axes.linewidth":        1.2,
+        "axes.labelcolor":       "#1A1A1A",
+        "axes.labelweight":      "bold",
+        "axes.labelsize":        13,
+        "axes.titlecolor":       "#1A1A1A",
+        "axes.titlesize":        13,
+        "axes.titleweight":      "bold",
+        "axes.spines.top":       False,
+        "axes.spines.right":     False,
+        # ── Ticks — bold, near-black, large enough to read printed ───────
+        "xtick.color":           "#1A1A1A",
+        "ytick.color":           "#1A1A1A",
+        "xtick.labelcolor":      "#1A1A1A",
+        "ytick.labelcolor":      "#1A1A1A",
+        "xtick.labelsize":       11,
+        "ytick.labelsize":       11,
+        "xtick.major.width":     1.2,
+        "ytick.major.width":     1.2,
+        "xtick.major.size":      5,
+        "ytick.major.size":      5,
+        "xtick.direction":       "out",
+        "ytick.direction":       "out",
+        # ── Grid ─────────────────────────────────────────────────────────
+        "grid.color":            "#CCCCCC",
+        "grid.linewidth":        0.5,
+        "grid.linestyle":        "--",
+        # ── Legend ───────────────────────────────────────────────────────
+        "legend.facecolor":      "white",
+        "legend.edgecolor":      "#555555",
+        "legend.fontsize":       10,
+        "legend.framealpha":     1.0,
+        "legend.borderpad":      0.7,
+        "legend.labelspacing":   0.45,
+        "legend.handlelength":   2.5,
+        "legend.handletextpad":  0.55,
+        # ── Lines ────────────────────────────────────────────────────────
+        "lines.linewidth":       1.8,
     }
 )
 
@@ -1088,72 +1120,90 @@ def plot_figure(
     rb = b["log_return"].dropna().values
 
     # ── Layout ────────────────────────────────────────────────────────────────
-    fig = plt.figure(figsize=(16, 12), facecolor="white")
+    # 18 × 14 in at 300 dpi gives ~5400 × 4200 px — comfortably print-ready
+    fig = plt.figure(figsize=(18, 14), facecolor="white")
     fig.suptitle(
         f"Information Bar Comparison:  {la}  vs  {lb}",
-        fontsize=18,
+        fontsize=16,
         color=TEXT_COL,
-        y=0.99,
+        y=0.995,
         fontweight="bold",
-        fontfamily="DejaVu Sans",
+        fontfamily="serif",
     )
     gs = gridspec.GridSpec(
         3,
         3,
         figure=fig,
-        hspace=0.52,
-        wspace=0.38,
-        top=0.93,
-        bottom=0.05,
-        left=0.08,
+        hspace=0.65,    # extra row spacing so panel titles don't crowd tick labels
+        wspace=0.42,    # extra column spacing for y-axis labels
+        top=0.94,
+        bottom=0.06,
+        left=0.09,
         right=0.97,
     )
 
     def _ax(row, col):
         ax = fig.add_subplot(gs[row, col])
-        ax.set_facecolor(PANEL_BG)
+        ax.set_facecolor("white")
         for sp in ax.spines.values():
-            sp.set_edgecolor(GRID_COL)
-            sp.set_linewidth(0.5)
-        ax.tick_params(colors=DIM_COL, labelsize=14)
-        ax.grid(True, color=GRID_COL, linewidth=0.4, alpha=0.7)
+            sp.set_edgecolor("#333333")
+            sp.set_linewidth(1.2)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.tick_params(
+            colors=TEXT_COL, labelsize=11, length=5, width=1.2,
+            direction="out", top=False, right=False,
+            labelcolor=TEXT_COL,
+        )
+        ax.grid(True, color=GRID_COL, linewidth=0.5, alpha=0.7, linestyle="--")
         return ax
 
+    def _bold_ticks(ax):
+        """Enforce bold, near-black tick labels after any draw call."""
+        for lbl in ax.get_xticklabels() + ax.get_yticklabels():
+            lbl.set_fontweight("bold")
+            lbl.set_color(TEXT_COL)
+            lbl.set_fontsize(11)
+
     def _title(ax, main: str, stat: str = ""):
-        """Single-line title: main text + one key stat in muted colour."""
+        """Single-line bold title with optional muted stat suffix."""
         if stat:
             ax.set_title(
                 f"{main}   —   {stat}",
-                fontsize=18,
+                fontsize=13,
                 color=TEXT_COL,
-                pad=6,
+                pad=7,
                 loc="left",
                 fontweight="bold",
             )
         else:
             ax.set_title(
-                main, fontsize=18, color=TEXT_COL, pad=6, loc="left", fontweight="bold"
+                main, fontsize=13, color=TEXT_COL, pad=7, loc="left", fontweight="bold"
             )
 
     def _leg(ax, loc="upper right"):
+        """Legend inside axes — used for panels with unambiguous space."""
         leg = ax.legend(
-            fontsize=14,
+            fontsize=10,
             loc=loc,
-            facecolor=PANEL_BG,
-            edgecolor=GRID_COL,
-            framealpha=0.85,
-            borderpad=0.5,
+            facecolor="white",
+            edgecolor="#555555",
+            framealpha=1.0,
+            borderpad=0.6,
         )
-        for t in leg.get_texts():
-            t.set_color(TEXT_COL)
+        if leg:
+            for t in leg.get_texts():
+                t.set_color(TEXT_COL)
+                t.set_fontweight("bold")
 
     # ── [A] Close price ───────────────────────────────────────────────────────
     axA = _ax(0, 0)
     axA.plot(a["datetime"], a["close"], color=CA, lw=1.8, alpha=0.95, label=la)
     axA.plot(b["datetime"], b["close"], color=CB, lw=1.8, alpha=0.80, label=lb)
-    axA.set_ylabel("Price (USD)", fontsize=16, color=DIM_COL, fontweight="bold")
-    axA.set_xlabel("Date", fontsize=16, color=DIM_COL, fontweight="bold")
+    axA.set_ylabel("Price (USD)", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
+    axA.set_xlabel("Date", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
     _leg(axA)
+    _bold_ticks(axA)
     _title(
         axA,
         "Close Price",
@@ -1208,11 +1258,12 @@ def plot_figure(
         _leg(axB)
         axB.set_xlabel(
             "Bar size  (z-score, IQR-filtered)",
-            fontsize=16,
-            color=DIM_COL,
+            fontsize=12,
+            color=TEXT_COL,
             fontweight="bold",
+            labelpad=5,
         )
-        axB.set_ylabel("Density", fontsize=16, color=DIM_COL, fontweight="bold")
+        axB.set_ylabel("Density", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
         _title(axB, "Bar Size Uniformity", f"CV lower = more uniform  ·  leads: {w_cv}")
     else:
         axB.hist(
@@ -1223,6 +1274,7 @@ def plot_figure(
         )
         _leg(axB)
         _title(axB, "High-Low Range  (bar_size unavailable)")
+    _bold_ticks(axB)
 
     # ── [C] Bars per day ──────────────────────────────────────────────────────
     axC = _ax(0, 2)
@@ -1244,8 +1296,9 @@ def plot_figure(
         alpha=0.9,
         label=f"{lb}   μ = {tb['bars_per_day']:.1f}",
     )
-    axC.set_ylabel("Bars per day", fontsize=16, color=DIM_COL, fontweight="bold")
+    axC.set_ylabel("Bars per day", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
     _leg(axC)
+    _bold_ticks(axC)
     _title(axC, "Bar Formation Frequency", "variation with market activity = good")
 
     # ── [D] Return distribution ───────────────────────────────────────────────
@@ -1278,14 +1331,16 @@ def plot_figure(
         loc="upper left",
         bbox_to_anchor=(1.01, 1),
         borderaxespad=0,
-        facecolor=PANEL_BG,
-        edgecolor=GRID_COL,
-        framealpha=0.85,
+        facecolor="white",
+        edgecolor="#555555",
+        framealpha=1.0,
     )
     for t in axD.get_legend().get_texts():
         t.set_color(TEXT_COL)
-    axD.set_xlabel("Log return", fontsize=16, color=DIM_COL, fontweight="bold")
-    axD.set_ylabel("Density", fontsize=16, color=DIM_COL, fontweight="bold")
+        t.set_fontweight("bold")
+    axD.set_xlabel("Log return", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
+    axD.set_ylabel("Density", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
+    _bold_ticks(axD)
     _title(
         axD,
         "Return Distribution  (dashed = fitted normal)",
@@ -1328,8 +1383,9 @@ def plot_figure(
     axE.set_xlim(0.5, max_lag + 0.5)
     w_lb = _winner(ta["lb10_p"], tb["lb10_p"], False, la, lb)
     _leg(axE)
-    axE.set_xlabel("Lag", fontsize=16, color=DIM_COL, fontweight="bold")
-    axE.set_ylabel("Autocorrelation", fontsize=16, color=DIM_COL, fontweight="bold")
+    _bold_ticks(axE)
+    axE.set_xlabel("Lag", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
+    axE.set_ylabel("Autocorrelation", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
     _title(
         axE,
         "Return ACF  (Ljung-Box test)",
@@ -1359,7 +1415,8 @@ def plot_figure(
     d_b = abs(tb.get("vr5", np.nan) - 1)
     w_vr = _winner(d_a, d_b, True, la, lb)
     _leg(axF)
-    axF.set_ylabel("VR(q)", fontsize=16, color=DIM_COL, fontweight="bold")
+    _bold_ticks(axF)
+    axF.set_ylabel("VR(q)", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
     _title(
         axF,
         "Variance Ratio  (Lo-MacKinlay 1988)",
@@ -1385,10 +1442,11 @@ def plot_figure(
         alpha=0.9,
         label=lb,
     )
-    axG.set_ylabel("Ann. vol (%)", fontsize=16, color=DIM_COL, fontweight="bold")
-    axG.set_xlabel("Date", fontsize=16, color=DIM_COL, fontweight="bold")
+    axG.set_ylabel("Ann. vol (%)", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
+    axG.set_xlabel("Date", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
     axG.margins(x=0.01)
     _leg(axG)
+    _bold_ticks(axG)
     _title(
         axG,
         f"Rolling Annualised Volatility  (window = {roll} bars)",
@@ -1424,9 +1482,10 @@ def plot_figure(
     axH.set_xlim(0.5, max_lag + 0.5)
     w_arch = _winner(ta["arch_p"], tb["arch_p"], False, la, lb)
     _leg(axH)
-    axH.set_xlabel("Lag", fontsize=16, color=DIM_COL, fontweight="bold")
+    _bold_ticks(axH)
+    axH.set_xlabel("Lag", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5)
     axH.set_ylabel(
-        "Autocorrelation  (r²)", fontsize=16, color=DIM_COL, fontweight="bold"
+        "Autocorrelation  (r²)", fontsize=12, color=TEXT_COL, fontweight="bold", labelpad=5
     )
     _title(
         axH,
@@ -1481,23 +1540,23 @@ def plot_figure(
         loc="center",
     )
     tbl.auto_set_font_size(False)
-    tbl.set_fontsize(10 if len(col_labels) > 3 else 11)
+    tbl.set_fontsize(9 if len(col_labels) > 3 else 10)
     tbl.scale(1.0 if len(col_labels) > 3 else 1.05, 1.8)
 
     for (r, c), cell in tbl.get_celld().items():
-        cell.set_edgecolor(GRID_COL)
-        cell.set_linewidth(0.4)
+        cell.set_edgecolor("#BBBBBB")
+        cell.set_linewidth(0.5)
         if r == 0:
             cell.set_facecolor("#DDEEFF")
-            cell.set_text_props(color=TEXT_COL, fontweight="bold", fontsize=14)
+            cell.set_text_props(color=TEXT_COL, fontweight="bold", fontsize=11)
         else:
-            bg = color_map.get((r - 1, c), PANEL_BG)
+            bg = color_map.get((r - 1, c), "white")
             cell.set_facecolor(bg)
-            cell.set_text_props(color=TEXT_COL, fontsize=10)
+            cell.set_text_props(color=TEXT_COL, fontsize=9, fontweight="bold")
 
     axI.set_title(
         verdict_line,
-        fontsize=16,
+        fontsize=12,
         color=TEXT_COL,
         pad=10,
         loc="center",
@@ -1519,14 +1578,21 @@ def plot_figure(
     )
 
     # ── Save as PDF ───────────────────────────────────────────────────────────
-    # Change extension to .pdf if caller passed .png
     pdf_path = out_path.with_suffix(".pdf")
+    # tight_layout pass resolves any remaining label/title overlap
+    try:
+        fig.set_layout_engine("tight", pad=0.5)
+    except Exception:
+        fig.tight_layout(pad=0.5)
     fig.savefig(
         pdf_path,
         bbox_inches="tight",
+        pad_inches=0.10,
         facecolor="white",
         edgecolor="none",
         backend="pdf",
+        dpi=300,
+        metadata={"Creator": "compare_bars.py — 9-panel journal figure"},
     )
     plt.close()
     print(f"  Figure (PDF) → {pdf_path}")
@@ -2265,9 +2331,9 @@ def _add_timebar_to_figure(fig, c: "pd.DataFrame", tc: dict):
     axes[0].plot(
         c["datetime"], c["close"], color=CC, lw=1.8, alpha=0.85, ls="--", label=lc
     )
-    axes[0].legend(
-        fontsize=14, facecolor="white", edgecolor="#AAAAAA", labelcolor="#1A1A1A"
-    )
+    _leg_kw = dict(fontsize=10, facecolor="white", edgecolor="#555555",
+                   framealpha=1.0, labelcolor="#1A1A1A")
+    axes[0].legend(**_leg_kw)
 
     # ── [B] Bar size distribution ─────────────────────────────────────────────
     if c["bar_size"].notna().sum() > 10:
@@ -2285,12 +2351,7 @@ def _add_timebar_to_figure(fig, c: "pd.DataFrame", tc: dict):
                 lw=1.5,
                 label=f"{lc}  CV={_fmt(tc['bs_cv'], 3)}",
             )
-            axes[1].legend(
-                fontsize=14,
-                facecolor="white",
-                edgecolor="#AAAAAA",
-                labelcolor="#1A1A1A",
-            )
+            axes[1].legend(**_leg_kw)
 
     # ── [C] Bars per day ──────────────────────────────────────────────────────
     bpd_c = c.groupby("date").size()
@@ -2303,9 +2364,7 @@ def _add_timebar_to_figure(fig, c: "pd.DataFrame", tc: dict):
         ls="--",
         label=f"{lc}  μ={tc['bars_per_day']:.1f}",
     )
-    axes[2].legend(
-        fontsize=14, facecolor="white", edgecolor="#AAAAAA", labelcolor="#1A1A1A"
-    )
+    axes[2].legend(**_leg_kw)
 
     # ── [D] Return distribution ───────────────────────────────────────────────
     lo = min(np.percentile(rc, 0.5), axes[3].get_xlim()[0])
@@ -2331,13 +2390,7 @@ def _add_timebar_to_figure(fig, c: "pd.DataFrame", tc: dict):
         ls=":",
         alpha=0.80,
     )
-    axes[3].legend(
-        fontsize=14,
-        facecolor="white",
-        edgecolor="#AAAAAA",
-        labelcolor="#1A1A1A",
-        loc="upper left",
-    )
+    axes[3].legend(**_leg_kw)
 
     # ── [E] ACF ───────────────────────────────────────────────────────────────
     max_lag = min(20, len(rc) // 4)
@@ -2351,27 +2404,21 @@ def _add_timebar_to_figure(fig, c: "pd.DataFrame", tc: dict):
         alpha=0.75,
         label=f"{lc}  LB₁₀={_fmt(tc['lb10_p'], 3)}",
     )
-    axes[4].legend(
-        fontsize=14, facecolor="white", edgecolor="#AAAAAA", labelcolor="#1A1A1A"
-    )
+    axes[4].legend(**_leg_kw)
 
     # ── [F] Variance ratio ────────────────────────────────────────────────────
     qs = [2, 5, 8, 16]
     vr_c = [tc.get(f"vr{q}", np.nan) for q in qs]
     x = np.arange(len(qs))
     axes[5].bar(x + 0.27, vr_c, 0.26, color=CC, alpha=0.75, label=lc)
-    axes[5].legend(
-        fontsize=14, facecolor="white", edgecolor="#AAAAAA", labelcolor="#1A1A1A"
-    )
+    axes[5].legend(**_leg_kw)
 
     # ── [G] Rolling vol ───────────────────────────────────────────────────────
     bpy_c = c.attrs.get("bars_per_year", 252)
     roll = max(5, min(20, len(c) // 10))
     rv_c = c["log_return"].rolling(roll).std() * np.sqrt(bpy_c) * 100
     axes[6].plot(c["datetime"], rv_c, color=CC, lw=1.8, alpha=0.85, ls="--", label=lc)
-    axes[6].legend(
-        fontsize=14, facecolor="white", edgecolor="#AAAAAA", labelcolor="#1A1A1A"
-    )
+    axes[6].legend(**_leg_kw)
 
     # ── [H] Squared ACF ───────────────────────────────────────────────────────
     ac_c2 = [float(pd.Series(rc**2).autocorr(int(l))) for l in lags]
@@ -2383,9 +2430,7 @@ def _add_timebar_to_figure(fig, c: "pd.DataFrame", tc: dict):
         alpha=0.75,
         label=f"{lc}  ARCH={_fmt(tc['arch_p'], 3)}",
     )
-    axes[7].legend(
-        fontsize=14, facecolor="white", edgecolor="#AAAAAA", labelcolor="#1A1A1A"
-    )
+    axes[7].legend(**_leg_kw)
 
 
 def _add_timebar_to_interactive(fig, c: "pd.DataFrame", tc: dict, la: str, lb: str):
@@ -2859,44 +2904,53 @@ _STANDALONE_PANELS = {"D": "return_dist", "E": "return_acf", "DE": "return_dist_
 # Sized for IEEE double-column (7.16 in) at 300 dpi.  All text is bold so a
 # physical B&W print remains fully legible; colours still distinguish series
 # on screen / colour print.
-_FIG_W   = 7.16   # single-panel width  (IEEE full column, inches)
-_FIG_H   = 4.4    # single-panel height — extra vertical room for below-legend
-_FIG_W2  = 14.0   # combined DE width   (landscape, two panels side by side)
-_FIG_H2  = 6.2    # combined DE height  (same as single — landscape not stacked)
-_FS_TTL  = 11     # panel title
-_FS_LBL  = 11     # axis labels
-_FS_TCK  = 10     # tick labels
-_FS_LEG  = 7.5    # legend text
-_LW_FIT  = 2.2    # fitted curve line width
-_LW_CNF  = 1.4    # confidence-band dashed line width
-_LW_SP   = 0.8    # spine line width
-_ALPHA_H = 0.40   # histogram fill alpha
-_ALPHA_B = 0.82   # bar alpha
-# Bottom margin large enough to hold the below-axis legend without clipping
-_BOT_1   = 0.24   # single panel bottom margin
-_BOT_2   = 0.28   # combined DE bottom margin (shared legend)
+_FIG_W   = 7.16   # single-panel width  (IEEE/Elsevier double-column = 7.16 in)
+_FIG_H   = 5.4    # single-panel height — extra vertical room for below-legend
+_FIG_W2  = 14.32  # combined DE width   (2 × 7.16 in, two panels side by side)
+_FIG_H2  = 5.6    # combined DE height
+_FS_TTL  = 13     # panel title — bold, readable at 300 dpi on physical print
+_FS_LBL  = 12     # axis labels
+_FS_TCK  = 11     # tick labels — min readable on A4 printout without zoom
+_FS_LEG  = 10     # legend text
+_LW_FIT  = 2.4    # fitted curve line width
+_LW_CNF  = 1.8    # confidence-band dashed line width
+_LW_SP   = 1.2    # spine / tick line width
+_ALPHA_H = 0.28   # histogram fill alpha
+_ALPHA_B = 0.85   # bar alpha
+# Bottom margins: must clear the tallest legend block without clipping
+_BOT_1   = 0.30   # single panel — 3 legend rows fit comfortably
+_BOT_2   = 0.34   # combined DE — 4 legend rows (series + CI band)
 
 _INK = "#1A1A1A"  # near-black for all text/spines — prints as solid black
 
 
 def _sa_style(ax):
-    """Apply clean, journal-ready axis style."""
+    """Apply clean, journal-ready axis style (white background, bold black ink)."""
     ax.set_facecolor("white")
     ax.grid(True, color="#CCCCCC", lw=0.5, alpha=0.7, zorder=0, linestyle="--")
-    for sp in ax.spines.values():
-        sp.set_edgecolor("#555555")
-        sp.set_linewidth(_LW_SP)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    for sp in ("left", "bottom"):
+        ax.spines[sp].set_edgecolor(_INK)
+        ax.spines[sp].set_linewidth(_LW_SP)
     ax.tick_params(
         colors=_INK, labelsize=_FS_TCK, length=5, width=_LW_SP,
         direction="out", top=False, right=False,
+        labelcolor=_INK,
     )
-
-
-def _sa_bold_ticks(ax):
-    """Make every tick label bold and near-black — survives B&W printing."""
+    # Force bold on all existing tick labels immediately
     for lbl in ax.get_xticklabels() + ax.get_yticklabels():
         lbl.set_fontweight("bold")
         lbl.set_color(_INK)
+        lbl.set_fontsize(_FS_TCK)
+
+
+def _sa_bold_ticks(ax):
+    """Make every tick label bold, near-black, and correctly sized — survives B&W printing."""
+    for lbl in ax.get_xticklabels() + ax.get_yticklabels():
+        lbl.set_fontweight("bold")
+        lbl.set_color(_INK)
+        lbl.set_fontsize(_FS_TCK)
 
 
 def _sa_thicken_legend_lines(leg):
@@ -2917,23 +2971,24 @@ def _sa_thicken_legend_lines(leg):
 
 def _sa_legend_below(ax, fig, ncol, bottom_margin):
     """
-    Place the legend below the axes, outside the plot area.
-    Returns the legend object.  Must be called AFTER fig.subplots_adjust so
-    the axes position is finalised.
+    Place the legend below the axes, fully outside the plot area, never overlapping data.
+    The anchor is set in axes-fraction coordinates so it is immune to data scaling.
+    Returns the legend object.
     """
+    # -0.22 clears the x-axis tick labels; increase for taller tick fonts
     leg = ax.legend(
         fontsize=_FS_LEG,
         facecolor="white",
         edgecolor="#555555",
         framealpha=1.0,
         loc="upper center",
-        bbox_to_anchor=(0.5, -0.17),
-        ncol=ncol,
-        borderpad=0.7,
-        labelspacing=0.45,
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=max(1, ncol),
+        borderpad=0.8,
+        labelspacing=0.5,
         handlelength=2.8,
-        handletextpad=0.55,
-        columnspacing=1.2,
+        handletextpad=0.6,
+        columnspacing=1.4,
     )
     if leg:
         for txt in leg.get_texts():
@@ -2979,13 +3034,21 @@ def _sa_shared_legend_below(fig, axes, ncol):
 
 
 def _sa_save(fig, path: Path):
+    """Save figure as publication-quality PDF — vector, 300 dpi, tight crop."""
+    # Constrain layout ensures no label/tick clipping before final save
+    try:
+        fig.set_layout_engine("tight", pad=0.4)
+    except Exception:
+        fig.tight_layout(pad=0.4)
     fig.savefig(
         str(path),
         bbox_inches="tight",
+        pad_inches=0.08,        # minimal white border — journal ready
         facecolor="white",
         edgecolor="none",
         backend="pdf",
         dpi=300,
+        metadata={"Creator": "compare_bars.py — journal figure export"},
     )
     plt.close(fig)
     print(f"  Fig → {path.name}")
@@ -2994,15 +3057,23 @@ def _sa_save(fig, path: Path):
 # ── Shared drawing helpers (draw onto a supplied axes, no figure creation) ───
 
 def _draw_panel_D(ax, ra, rb, rc, ta, tb, tc):
-    """Draw return-distribution histogram + fitted Gaussian onto *ax*."""
+    """
+    Draw return-distribution panel onto *ax*.
+
+    Visual design (journal standard):
+      solid line  = empirical KDE    (data)
+      dashed line = fitted Gaussian  (null hypothesis)
+    KDE curves instead of filled histograms eliminate alpha-blending artefacts
+    when three overlapping distributions share the same centre region.
+    """
     from scipy import stats as _stats
+    from scipy.stats import gaussian_kde
     import matplotlib.ticker as _mt
 
     all_r = np.concatenate([ra, rb] + ([rc] if rc is not None else []))
     lo = np.percentile(all_r, 0.5)
     hi = np.percentile(all_r, 99.5)
-    bins  = np.linspace(lo, hi, 55)
-    xfit  = np.linspace(lo, hi, 400)
+    xfit = np.linspace(lo, hi, 500)
 
     series = [
         (ra, CA, ta["label"], ta.get("kurt", float("nan"))),
@@ -3012,21 +3083,29 @@ def _draw_panel_D(ax, ra, rb, rc, ta, tb, tc):
         series.append((rc, CC, tc["label"], tc.get("kurt", float("nan"))))
 
     for r, col, lab, kurt in series:
-        ax.hist(r, bins=bins, density=True, color=col, alpha=_ALPHA_H,
-                zorder=2, edgecolor="none")
+        kde = gaussian_kde(r, bw_method="scott")
+        ax.plot(
+            xfit, kde(xfit),
+            color=col, lw=2.4, ls="-", zorder=3,
+            label=f"{lab}  (Kurt = {kurt:+.3f})",
+        )
+        # Fitted Gaussian — dashed, same colour, slightly thinner
         ax.plot(
             xfit,
             _stats.norm.pdf(xfit, float(r.mean()), float(r.std())),
-            color=col, lw=_LW_FIT, ls="--", zorder=3,
-            label=f"{lab}  (Kurt = {kurt:+.3f})",
+            color=col, lw=1.6, ls="--", zorder=2, alpha=0.75,
         )
 
-    ax.set_xlabel("Log Return", fontsize=_FS_LBL, fontweight="bold", color=_INK)
-    ax.set_ylabel("Density",    fontsize=_FS_LBL, fontweight="bold", color=_INK)
+    ax.set_xlabel("Log Return", fontsize=_FS_LBL, fontweight="bold", color=_INK,
+                  labelpad=6)
+    ax.set_ylabel("Density",    fontsize=_FS_LBL, fontweight="bold", color=_INK,
+                  labelpad=6)
     ax.set_xlim(lo, hi)
+    ax.margins(y=0.05)
 
+    # Y-axis formatter — auto-scale decimal places to avoid scientific notation
     ymax = ax.get_ylim()[1]
-    fmt = (f"{{x:.3f}}" if ymax < 0.1 else f"{{x:.2f}}" if ymax < 1 else f"{{x:.1f}}")
+    fmt = (f"{{x:.1f}}" if ymax >= 10 else f"{{x:.2f}}" if ymax >= 1 else f"{{x:.3f}}")
     ax.yaxis.set_major_formatter(_mt.FuncFormatter(lambda x, _: fmt.format(x=x)))
 
     ax.set_title(
@@ -3036,7 +3115,7 @@ def _draw_panel_D(ax, ra, rb, rc, ta, tb, tc):
 
 
 def _draw_panel_E(ax, ra, rb, rc, ta, tb, tc):
-    """Draw return-ACF bar chart onto *ax*."""
+    """Draw return-ACF bar chart onto *ax* (journal standard)."""
     import matplotlib.ticker as _mt
 
     max_lag = 15
@@ -3050,7 +3129,7 @@ def _draw_panel_E(ax, ra, rb, rc, ta, tb, tc):
     bw = 0.25
     if rc is not None and tc is not None:
         series.append((rc, CC, tc["label"], tc.get("lb10_p", float("nan")), 0.27))
-        bw = 0.23  # slightly narrower when 3 series
+        bw = 0.23  # narrower when 3 series so bars never overlap
 
     for r, col, lab, lb_p, offset in series:
         ac  = [float(pd.Series(r).autocorr(int(l))) for l in lags]
@@ -3061,12 +3140,15 @@ def _draw_panel_E(ax, ra, rb, rc, ta, tb, tc):
     ax.axhline( conf, color="#444444", lw=_LW_CNF, ls="--", zorder=3,
                 label="95 % confidence band")
     ax.axhline(-conf, color="#444444", lw=_LW_CNF, ls="--", zorder=3)
-    ax.axhline(0,     color=_INK,      lw=0.7,     zorder=1)
+    ax.axhline(0,     color=_INK,      lw=0.8,     zorder=1)
 
-    ax.set_xlabel("Lag",             fontsize=_FS_LBL, fontweight="bold", color=_INK)
-    ax.set_ylabel("Autocorrelation", fontsize=_FS_LBL, fontweight="bold", color=_INK)
+    ax.set_xlabel("Lag",             fontsize=_FS_LBL, fontweight="bold", color=_INK,
+                  labelpad=6)
+    ax.set_ylabel("Autocorrelation", fontsize=_FS_LBL, fontweight="bold", color=_INK,
+                  labelpad=6)
     ax.set_xlim(0.3, max_lag + 0.7)
     ax.xaxis.set_major_locator(_mt.MultipleLocator(5))
+    ax.xaxis.set_minor_locator(_mt.MultipleLocator(1))
     ax.set_title(
         "(b)  Return Autocorrelation Function  [dashed = 95 % CI]",
         fontsize=_FS_TTL, fontweight="bold", color=_INK, loc="left", pad=8,
@@ -3076,62 +3158,60 @@ def _draw_panel_E(ax, ra, rb, rc, ta, tb, tc):
 # ── Public panel functions ────────────────────────────────────────────────────
 
 def _sa_panel_D(ra, rb, rc, ta, tb, tc, out_path: Path):
-    """Standalone figure D: return distribution."""
-    from matplotlib.lines import Line2D as _L2D
-    n_series = 2 + (1 if rc is not None else 0)
+    """Standalone figure D: return distribution — journal ready."""
     fig, ax = plt.subplots(figsize=(_FIG_W, _FIG_H), facecolor="white")
-    fig.subplots_adjust(left=0.12, right=0.97, top=0.92, bottom=_BOT_1)
+    # Reserve bottom space for the legend block before drawing
+    fig.subplots_adjust(left=0.13, right=0.97, top=0.91, bottom=_BOT_1)
     _sa_style(ax)
     _draw_panel_D(ax, ra, rb, rc, ta, tb, tc)
-    # Show only dashed Line2D handles — suppress histogram Polygon patches
-    h_all, l_all = ax.get_legend_handles_labels()
-    h_lines = [(h, l) for h, l in zip(h_all, l_all) if isinstance(h, _L2D)]
-    handles_D, labels_D = zip(*h_lines) if h_lines else ([], [])
+    # Bold ticks AFTER drawing (draw may create new tick labels)
+    _sa_bold_ticks(ax)
+    handles_D, labels_D = ax.get_legend_handles_labels()
     leg = ax.legend(
         handles_D, labels_D,
         fontsize=_FS_LEG, facecolor="white", edgecolor="#555555", framealpha=1.0,
-        loc="upper center", bbox_to_anchor=(0.5, -0.17),
-        ncol=n_series, borderpad=0.7, labelspacing=0.45,
-        handlelength=2.8, handletextpad=0.55, columnspacing=1.2,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),   # clear x-axis label + tick labels
+        ncol=1,
+        borderpad=0.8, labelspacing=0.5,
+        handlelength=2.8, handletextpad=0.6, columnspacing=1.4,
     )
     if leg:
         for txt in leg.get_texts():
             txt.set_color(_INK); txt.set_fontweight("bold")
     _sa_thicken_legend_lines(leg)
-    _sa_bold_ticks(ax)
     _sa_save(fig, out_path)
 
 
 def _sa_panel_E(ra, rb, rc, ta, tb, tc, out_path: Path):
-    """Standalone figure E: return ACF."""
-    n_series = 2 + (1 if rc is not None else 0) + 1  # +1 for CI band entry
+    """Standalone figure E: return ACF — journal ready."""
+    n_series = 2 + (1 if rc is not None else 0) + 1   # +1 for CI band entry
     fig, ax = plt.subplots(figsize=(_FIG_W, _FIG_H), facecolor="white")
-    fig.subplots_adjust(left=0.12, right=0.97, top=0.92, bottom=_BOT_1)
+    fig.subplots_adjust(left=0.13, right=0.97, top=0.91, bottom=_BOT_1)
     _sa_style(ax)
     _draw_panel_E(ax, ra, rb, rc, ta, tb, tc)
+    _sa_bold_ticks(ax)
     leg = _sa_legend_below(ax, fig, ncol=min(n_series, 4), bottom_margin=_BOT_1)
     _sa_thicken_legend_lines(leg)
-    _sa_bold_ticks(ax)
     _sa_save(fig, out_path)
 
 
 def _sa_panel_DE(ra, rb, rc, ta, tb, tc, out_path: Path):
     """
     Combined figure DE: panel D (left) and panel E (right) side by side.
-    Landscape format at 14 in wide — journal standard for two-panel figures.
+    Landscape format at 14.32 in wide — journal standard for two-panel figures.
     Each panel has its own legend below its x-axis with thick visible handles.
     Output: fig_DE_<bartype>.pdf
     """
-    n_series = 2 + (1 if rc is not None else 0)
-
     fig, (axD, axE) = plt.subplots(
         1, 2,
         figsize=(_FIG_W2, _FIG_H2),
         facecolor="white",
     )
+    # Generous bottom margin so below-axis legends are never clipped at any DPI
     fig.subplots_adjust(
         left=0.07, right=0.98,
-        top=0.91,  bottom=0.38,
+        top=0.89,  bottom=_BOT_2,
         wspace=0.30,
     )
 
@@ -3141,30 +3221,28 @@ def _sa_panel_DE(ra, rb, rc, ta, tb, tc, out_path: Path):
     _draw_panel_D(axD, ra, rb, rc, ta, tb, tc)
     _draw_panel_E(axE, ra, rb, rc, ta, tb, tc)
 
-    # ── Panel D legend — full labels, ncol=1 (one row per series) ───────────
-    from matplotlib.lines import Line2D as _L2D
-    custom_handles_D = []
-    custom_labels_D  = []
-    for h, l in zip(*axD.get_legend_handles_labels()):
-        if isinstance(h, _L2D):
-            custom_handles_D.append(h)
-            custom_labels_D.append(l)
+    # Bold ticks AFTER drawing — tick labels may be regenerated by the draw calls
+    _sa_bold_ticks(axD)
+    _sa_bold_ticks(axE)
+
+    # ── Panel D legend — one row per series, below x-axis ────────────────────
+    custom_handles_D, custom_labels_D = axD.get_legend_handles_labels()
     legD = axD.legend(
         custom_handles_D, custom_labels_D,
         fontsize=_FS_LEG,
         facecolor="white", edgecolor="#555555", framealpha=1.0,
         loc="upper center",
-        bbox_to_anchor=(0.5, -0.04),
+        bbox_to_anchor=(0.5, -0.22),   # clears x-label + tick labels
         ncol=1,
-        borderpad=0.5, labelspacing=0.35,
-        handlelength=2.5, handletextpad=0.5,
+        borderpad=0.7, labelspacing=0.45,
+        handlelength=2.6, handletextpad=0.5,
     )
     if legD:
         for txt in legD.get_texts():
             txt.set_color(_INK); txt.set_fontweight("bold")
         _sa_thicken_legend_lines(legD)
 
-    # ── Panel E legend — full labels, ncol=1 (one row per series) ───────────
+    # ── Panel E legend — series + CI band, sorted so CI is last ─────────────
     handles_E, labels_E = axE.get_legend_handles_labels()
     ci_idx = next((i for i, l in enumerate(labels_E) if "confidence" in l.lower()), None)
     if ci_idx is not None and ci_idx != len(handles_E) - 1:
@@ -3175,18 +3253,16 @@ def _sa_panel_DE(ra, rb, rc, ta, tb, tc, out_path: Path):
         fontsize=_FS_LEG,
         facecolor="white", edgecolor="#555555", framealpha=1.0,
         loc="upper center",
-        bbox_to_anchor=(0.5, -0.04),
+        bbox_to_anchor=(0.5, -0.22),
         ncol=1,
-        borderpad=0.5, labelspacing=0.35,
-        handlelength=2.5, handletextpad=0.5,
+        borderpad=0.7, labelspacing=0.45,
+        handlelength=2.6, handletextpad=0.5,
     )
     if legE:
         for txt in legE.get_texts():
             txt.set_color(_INK); txt.set_fontweight("bold")
         _sa_thicken_legend_lines(legE)
 
-    _sa_bold_ticks(axD)
-    _sa_bold_ticks(axE)
     _sa_save(fig, out_path)
 
 
@@ -3229,14 +3305,40 @@ def _generate_standalone_figures(
     import matplotlib.pyplot as _plt
     _plt.rcParams.update(
         {
-            "font.family":        "DejaVu Sans",
+            # ── Font (Times New Roman — IEEE/Elsevier preferred) ─────────
+            "font.family":        "serif",
+            "font.serif":         ["Times New Roman", "DejaVu Serif", "serif"],
             "font.weight":        "bold",
             "figure.dpi":         300,
+            "savefig.dpi":        300,
+            "savefig.bbox":       "tight",
             "text.color":         _INK,
+            # ── Axes ─────────────────────────────────────────────────────
+            "axes.facecolor":     "white",
+            "axes.edgecolor":     "#333333",
+            "axes.linewidth":     _LW_SP,
             "axes.titleweight":   "bold",
             "axes.labelweight":   "bold",
+            "axes.titlesize":     _FS_TTL,
+            "axes.labelsize":     _FS_LBL,
             "axes.spines.top":    False,
             "axes.spines.right":  False,
+            # ── Ticks — bold near-black, large enough for A4 print ───────
+            "xtick.labelsize":    _FS_TCK,
+            "ytick.labelsize":    _FS_TCK,
+            "xtick.color":        _INK,
+            "ytick.color":        _INK,
+            "xtick.labelcolor":   _INK,
+            "ytick.labelcolor":   _INK,
+            "xtick.major.width":  _LW_SP,
+            "ytick.major.width":  _LW_SP,
+            "xtick.major.size":   5,
+            "ytick.major.size":   5,
+            "xtick.direction":    "out",
+            "ytick.direction":    "out",
+            # ── Legend ───────────────────────────────────────────────────
+            "legend.fontsize":    _FS_LEG,
+            "legend.framealpha":  1.0,
         }
     )
 

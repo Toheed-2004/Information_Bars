@@ -117,7 +117,11 @@ class DollarBar(BaseBar):
         estimated_bar_duration = minutes_per_day / target_bars_per_day
         max_duration_minutes = max(MAX_DURATION_FLOOR, min(DOLLAR_MAX_DURATION_CAP, int(estimated_bar_duration * DURATION_ESTIMATED_MULTIPLIER)))
 
-        extreme_threshold = median_daily_volume * EXTREME_THRESHOLD_MULTIPLIER
+        # BUG-FIX 17: extreme_threshold must be relative to the per-bar target,
+        # not the daily volume. Using median_daily_volume made the threshold
+        # ~target_bars_per_day times too large (e.g. 20× instead of ~3×), 
+        # effectively disabling the extreme-event early-close trigger entirely.
+        extreme_threshold = initial_target_dollar_volume * EXTREME_THRESHOLD_MULTIPLIER
 
         logger.debug(
             "Dollar analysis: target=$%.0f, alpha=%.3f, tier=%s, bars_per_day=%.1f",
@@ -218,6 +222,21 @@ class DollarBar(BaseBar):
         return (accumulated >= target and min_met) or max_exceeded or extreme_detected
 
     def get_bar_size_value(self, minute_data: Dict[str, Any]) -> float:
+        """
+        Dollar volume for one 1-minute OHLCV candle: close_price × bar_volume.
+
+        BUG-FIX 6 (documentation / methodology clarification):
+        This is a necessary approximation for minute-bar data. The true dollar
+        volume for a minute would be Σ(p_i × q_i) over all individual trades,
+        but 1-minute OHLCV data stores only aggregate volume, not individual trades.
+        Using close × volume slightly overstates or understates the true dollar
+        volume (by the difference between close and VWAP, typically < 0.05%
+        per minute for BTC). The tick pipeline uses the exact formula p×q,
+        so this difference is real but small in practice.
+
+        Researchers comparing minute-bar vs tick-bar dollar volumes should note
+        this approximation in their methodology section.
+        """
         if not self._validate_minute_data(minute_data):
             return 0.0
         return max(0.0, float(minute_data["close"]) * float(minute_data["volume"]))

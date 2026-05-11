@@ -144,18 +144,33 @@ class VolumeBar(BaseBar):
     # =========================================================================
 
     def _classify_volume_tier(self, daily_volumes: List[float]) -> str:
-        """Classify asset by volume tier."""
+        """
+        Classify asset by volume tier based on absolute daily BTC volume.
+
+        BUG-FIX 10: The original logic was self-referential:
+            tier1_threshold = median_vol * (1.0 + cv * 2.0)
+            if median_vol >= tier1_threshold * 0.8:  # = median*(1+cv*2)*0.8
+        Simplified: 1 >= (1+cv*2)*0.8, so tier1 required cv <= 0.125.
+        BTC's daily volume CV is typically 0.2-0.4, making tier1 unreachable
+        and tier determination a function of CV alone, not actual volume.
+
+        Fix: use absolute volume thresholds (BTC/day). These represent the
+        typical order-of-magnitude difference between retail altcoins (tier3),
+        mid-cap assets (tier2), and high-volume perpetuals/majors (tier1).
+        Thresholds are in the same units as the input (quantity/day).
+        """
         arr = np.array(daily_volumes, dtype=float)
         median_vol = float(np.median(arr))
-        std_vol = float(np.std(arr))
-        if std_vol > 0 and median_vol > 0:
-            cv = std_vol / median_vol
-            tier1_threshold = median_vol * (1.0 + cv * 2.0)
-            tier2_threshold = median_vol * (0.1 + cv * 0.5)
-            if median_vol >= tier1_threshold * 0.8:
-                return "tier1"
-            elif median_vol >= tier2_threshold * 2.0:
-                return "tier2"
+        # Absolute thresholds in native asset units (BTC-equivalent per day).
+        # tier1: ≥ 30,000 BTC/day — major perpetuals and spot BTC
+        # tier2: ≥  3,000 BTC/day — mid-cap crypto
+        # tier3: < 3,000 BTC/day  — low-liquidity assets
+        TIER1_THRESHOLD = 30_000.0
+        TIER2_THRESHOLD =  3_000.0
+        if median_vol >= TIER1_THRESHOLD:
+            return "tier1"
+        elif median_vol >= TIER2_THRESHOLD:
+            return "tier2"
         return "tier3"
 
     def _calculate_trading_activity_efficiency(self, volumes: List[float]) -> float:

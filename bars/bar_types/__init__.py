@@ -2,15 +2,29 @@
 bars/bar_types/__init__.py
 --------------------------
 Registry of all minute-level and tick-level bar type classes.
+
+BUG-FIX 1 (Critical — Wrong tick class registry):
+    The original file aliased 5 minute-bar classes as their tick equivalents:
+        from .hybrid_bars    import HybridBar    as TickHybridBar
+        from .volatility_bars import VolatilityBar as TickVolatilityBar
+        from .volume_bars    import VolumeBar    as TickVolumeBar
+        from .renko_bars     import RenkoBar     as TickRenkoBar
+        from .range_bars     import RangeBar     as TickRangeBar
+    Then the actual tick-module imports were COMMENTED OUT.
+    Effect: TICK_BAR_TYPES contained minute-bar classes for 5 of 6 types.
+    When processor.py called get_bar_class(bar_type, source='tick'),
+    it got a minute-bar class — causing tick-native calibration, the
+    exact tick accumulation logic, and duration_seconds tracking to be
+    completely bypassed. Bars were built using minute-bar EMA logic
+    and minute-level accumulate_bar_data even on tick data, producing
+    structurally incorrect results for the tick pipeline comparison.
+
+    Fix: import each class from its actual tick module. All tick imports
+    are now active (not commented out).
 """
 from .base import BaseBar
-from .hybrid_bars import HybridBar as TickHybridBar  
-from .volatility_bars import VolatilityBar as TickVolatilityBar
-from .volume_bars import VolumeBar as TickVolumeBar
-from .renko_bars import RenkoBar as TickRenkoBar
-from .range_bars import RangeBar as TickRangeBar
 
-# Minute-level bar classes
+# ── Minute-level bar classes ──────────────────────────────────────────────────
 from .dollar_bars     import DollarBar
 from .volume_bars     import VolumeBar
 from .volatility_bars import VolatilityBar
@@ -18,16 +32,15 @@ from .range_bars      import RangeBar
 from .renko_bars      import RenkoBar
 from .hybrid_bars     import HybridBar
 
-# Tick-level bar classes
+# ── Tick-level bar classes — BUG-FIX 1: import from the correct tick modules ─
 from .tick_dollar_bars     import TickDollarBar
-# from .tick_volume_bars     import TickVolumeBar
-# from .tick_volatility_bars import TickVolatilityBar
-# from .tick_range_bars      import TickRangeBar
-# from .tick_renko_bars      import TickRenkoBar
-# from .tick_hybrid_bars     import TickHybridBar
+from .tick_volume_bars     import TickVolumeBar       # FIX: was VolumeBar alias
+from .tick_volatility_bars import TickVolatilityBar   # FIX: was VolatilityBar alias
+from .tick_range_bars      import TickRangeBar        # FIX: was RangeBar alias
+from .tick_renko_bars      import TickRenkoBar        # FIX: was RenkoBar alias
+from .tick_hybrid_bars     import TickHybridBar       # FIX: was HybridBar alias
 
 # ── Registries ────────────────────────────────────────────────────────────────
-
 MINUTE_BAR_TYPES: dict = {
     "dollar":     DollarBar,
     "volume":     VolumeBar,

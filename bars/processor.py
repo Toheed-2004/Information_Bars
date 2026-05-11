@@ -53,17 +53,39 @@ CHUNK_SIZE = 1_000_000*5
 
 def _iter_csv_chunks(path: str) -> Iterator[tuple]:
     ms_divisor: Optional[int] = None
+    # BUG-FIX 13: Detect whether the CSV has a header row before filtering.
+    # Binance raw aggTrade CSVs may lack a header (columns are positional).
+    # If the first cell of the first row is not a valid integer agg_trade_id,
+    # we re-read with explicit column names to avoid silently dropping all data.
+    import csv as _csv
+    _has_header = True
+    try:
+        with open(path, "r") as _fh:
+            _first = next(_csv.reader(_fh))
+            if _first and _first[0].strip().lstrip("-").isdigit():
+                _has_header = False  # first row is data, not a header
+    except Exception:
+        pass
+
+    _binance_cols = _BINANCE_COLUMNS if not _has_header else None
     for chunk in pd.read_csv(
         path,
-        header=0,
+        header=0 if _has_header else None,
+        names=_binance_cols,
         dtype=str,
         chunksize=CHUNK_SIZE,
     ):
+        # Guard: if agg_trade_id column is missing fall back gracefully
+        if "agg_trade_id" not in chunk.columns:
+            continue
         chunk = chunk[chunk["agg_trade_id"].str.strip().str.isdigit()]
         if chunk.empty:
             continue
-        chunk["price"]        = pd.to_numeric(chunk["price"],        errors="coerce").astype("float32")
-        chunk["quantity"]     = pd.to_numeric(chunk["quantity"],     errors="coerce").astype("float32")
+        # BUG-FIX 5: use float64 (not float32) to prevent ~0.001 USD precision loss
+        # per tick in dollar-volume accumulation. Over millions of ticks this causes
+        # a measurable systematic bias in target calibration and bar boundaries.
+        chunk["price"]        = pd.to_numeric(chunk["price"],        errors="coerce").astype("float64")
+        chunk["quantity"]     = pd.to_numeric(chunk["quantity"],     errors="coerce").astype("float64")
         chunk["transact_time"]= pd.to_numeric(chunk["transact_time"],errors="coerce").astype("int64")
         chunk = chunk[(chunk["price"] > 0) & (chunk["quantity"] > 0)]
         if chunk.empty:
@@ -76,8 +98,8 @@ def _iter_csv_chunks(path: str) -> Iterator[tuple]:
         if ms_divisor != 1:
             ts = ts // ms_divisor
         yield (
-            chunk["price"].to_numpy(dtype=np.float32),
-            chunk["quantity"].to_numpy(dtype=np.float32),
+            chunk["price"].to_numpy(dtype=np.float64),    # BUG-FIX 5
+            chunk["quantity"].to_numpy(dtype=np.float64), # BUG-FIX 5
             ts,
             chunk["is_buyer_maker"].to_numpy(dtype=bool),
         )
@@ -213,10 +235,18 @@ def process_tick_bars(
                 bar_processor, market_params, recent, _update_and_adapt)
 
         else:  # volatility / range / hybrid
-            bars, market_params, open_bar_data, _ = mod.process_chunk(
+            # BUG-FIX 9: The 4th return value (leftover) is always {} for
+            # volatility/range/hybrid — exhausted ticks are absorbed into
+            # open_bar_data carry rather than returned as raw arrays.
+            # We name it explicitly instead of using _ to make this contract
+            # visible and catch any future implementation that changes it.
+            bars, market_params, open_bar_data, _leftover = mod.process_chunk(
                 prices, quantities, timestamps_ms, is_buyer_maker,
                 bar_processor, market_params, recent,
                 open_bar_data, _update_and_adapt)
+            if _leftover:  # should always be empty — log if not
+                logger.warning("Unexpected leftover from %s process_chunk: %d ticks",
+                               bar_type, len(next(iter(_leftover.values()), [])))
 
         del prices, quantities, timestamps_ms, is_buyer_maker; gc.collect()
 
@@ -288,7 +318,27 @@ def process_minute_bars(
     recent   = deque(maxlen=MIN_BARS_FOR_QUALITY)
     last_dt  = start_date
 
+    # BUG-FIX 16: Determine how many rows were used for calibration so we can skip
+    # them in the production loop. Without this skip, calibration data is processed
+    # twice — once for parameter estimation and once as production bars — introducing
+    # look-ahead bias (the EMA target was estimated from the very data it then uses).
+    # On resume (state loaded) no calibration was done this run, so skip_rows = 0.
+    if state and state.get("ema_state"):
+        calibration_skip_rows = 0  # resumed — no calibration done this run
+    else:
+        calibration_skip_rows = ANALYSIS_LOOKBACK_DAYS * 1_440
+    rows_processed = 0
+
     for row in df.itertuples(index=False):
+        rows_processed += 1
+        if rows_processed <= calibration_skip_rows:
+            # Skip rows that were used only for calibration.
+            # Still update previous_close / renko_reference state so
+            # the first production bar starts with correct context.
+            if hasattr(processor, "previous_close"):
+                processor.previous_close = float(row.close)
+            last_dt = row.datetime
+            continue
         md = {"datetime":row.datetime,"open":float(row.open),"high":float(row.high),
               "low":float(row.low),"close":float(row.close),"volume":float(row.volume)}
         if any(v<=0 for v in (md["open"],md["high"],md["low"],md["close"])):

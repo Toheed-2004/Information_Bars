@@ -105,7 +105,10 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
-from .base import BaseBar as RangeBar
+# BUG-FIX 4a: import actual RangeBar (not abstract BaseBar).
+# BUG-FIX 12: _MS_PER_DAY used in calibrate() — define locally.
+from .range_bars import RangeBar
+_MS_PER_DAY = 86_400 * 1_000
 from common import *
 
 import numpy as np
@@ -398,7 +401,9 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
 
     # ── information multiplier ────────────────────────────────────────────────
     ret_entropy  = _tick_entropy(log_ret)
-    rand_entropy = _tick_entropy(np.random.normal(0, np.std(log_ret), len(log_ret)))
+    # BUG-FIX 15: fixed seed for reproducible tick calibration
+    _rng_calib = np.random.default_rng(seed=42)
+    rand_entropy = _tick_entropy(_rng_calib.normal(0, np.std(log_ret), len(log_ret)))
     information_ratio      = ret_entropy / rand_entropy if rand_entropy > 0 else 1.0
     information_multiplier = max(0.5, min(2.0, information_ratio))
 
@@ -703,3 +708,13 @@ def process_chunk(
     # Chunk fully consumed, no partial bar
     open_bar_data = {}
     return bars, market_params, open_bar_data, {}
+
+# ── BUG-FIX 1 (companion): TickRangeBar class for registry ───────────────────
+class TickRangeBar(RangeBar):
+    """
+    Tick-level range bar processor.
+    Inherits RangeBar for EMA and quality-assessment methods.
+    The tick-native calibrate() and process_chunk() use exact tick
+    high/low excursion (high-low)/open rather than summed minute spans.
+    """
+    pass
