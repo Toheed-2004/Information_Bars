@@ -308,19 +308,23 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     mad = float(np.median(np.abs(daily_vol - median_daily_vol)))
     volume_cv = mad / median_daily_vol if median_daily_vol > 0 else 0.3
 
-    # ── asset tier (by daily BTC volume) ─────────────────────────────────────
-    # Reuse volume bar's tier logic: tier1 if median > ~2× std above median
-    std_vol = float(np.std(daily_vol))
-    if std_vol > 0 and median_daily_vol > 0:
-        cv_raw = std_vol / median_daily_vol
-        if median_daily_vol >= median_daily_vol * (1.0 + cv_raw * 2.0) * 0.8:
-            asset_tier = "tier1"
-        elif median_daily_vol >= median_daily_vol * (0.1 + cv_raw * 0.5) * 2.0:
-            asset_tier = "tier2"
-        else:
-            asset_tier = "tier3"
+    # ── asset tier (by absolute daily BTC volume) ───────────────────────────
+    # Mirror the fixed VolumeBar._classify_volume_tier() absolute thresholds.
+    # The previous logic was self-referential (compared median_vol against a
+    # threshold derived from median_vol itself), making tier depend only on CV,
+    # not actual volume level — BTC always got tier2 regardless of volume.
+    # Fix: absolute thresholds matching volume_bars.py (BTC-equivalent per day):
+    #   tier1 ≥ 30,000 BTC/day  (major perpetuals / spot BTC)
+    #   tier2 ≥  3,000 BTC/day  (mid-cap crypto)
+    #   tier3 <  3,000 BTC/day  (low-liquidity assets)
+    VOLUME_TIER1_THRESHOLD = 30_000.0
+    VOLUME_TIER2_THRESHOLD  =  3_000.0
+    if median_daily_vol >= VOLUME_TIER1_THRESHOLD:
+        asset_tier = "tier1"
+    elif median_daily_vol >= VOLUME_TIER2_THRESHOLD:
+        asset_tier = "tier2"
     else:
-        asset_tier = "tier1"  # BTC futures always tier1
+        asset_tier = "tier3"
 
     # ── information multiplier from tick log-return entropy ──────────────────
     log_ret = _tick_log_returns(cal_p.astype(np.float64))

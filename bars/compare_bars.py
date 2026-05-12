@@ -270,18 +270,33 @@ def _iqr_filter(arr: np.ndarray) -> np.ndarray:
 
 
 def _variance_ratio(r: np.ndarray, q: int) -> tuple:
-    """Lo-MacKinlay (1988) vectorised VR(q)."""
+    """
+    Variance Ratio Test: Lo and MacKinlay (1988), Review of Financial Studies.
+
+    Implements the exact paper formulas:
+      var1  = (1/T) * sum((r_t - mu)^2)           [biased estimator, per paper]
+      m     = q*(T-q+1)*(1-q/T)                   [normalisation in paper]
+      var_q = (1/m) * sum((r_q - q*mu)^2)         [q-period return variance]
+      VR(q) = var_q / var1
+      z(q)  = (VR(q)-1) / sqrt(delta)             [homoskedastic z-stat]
+      delta = 2*(2q-1)*(q-1) / (3qT)              [Lo-MacKinlay eq. 11]
+
+    Standard q values for this paper: {2, 4, 8, 16}.
+    """
     T = len(r)
     if T < q + 2:
         return np.nan, np.nan
     mu = r.mean()
-    var1 = np.sum((r - mu) ** 2) / (T - 1)
+    var1 = np.sum((r - mu) ** 2) / T            # paper uses biased 1/T
     if var1 == 0:
         return np.nan, np.nan
     cs = np.concatenate([[0.0], np.cumsum(r)])
-    r_q = cs[q:] - cs[:-q]
-    var_q = np.sum((r_q - r_q.mean()) ** 2) / (len(r_q) - 1)
-    vr = var_q / (q * var1)
+    r_q = cs[q:] - cs[:-q]                      # overlapping q-period returns
+    m = q * (T - q + 1) * (1 - q / T)           # paper normalisation
+    if m <= 0:
+        return np.nan, np.nan
+    var_q = np.sum((r_q - q * mu) ** 2) / m
+    vr = var_q / var1
     delta = 2 * (2 * q - 1) * (q - 1) / (3 * q * T)
     z = (vr - 1) / np.sqrt(delta) if delta > 0 else np.nan
     p = float(2 * (1 - stats.norm.cdf(abs(z)))) if not np.isnan(z) else np.nan
@@ -335,8 +350,8 @@ def run_tests(df: pd.DataFrame, label: str) -> dict:
         "arch_p": nan,
         "vr2": nan,
         "vr2_p": nan,
-        "vr5": nan,
-        "vr5_p": nan,
+        "vr4": nan,
+        "vr4_p": nan,
         "vr8": nan,
         "vr8_p": nan,
         "vr16": nan,
@@ -433,7 +448,7 @@ def run_tests(df: pd.DataFrame, label: str) -> dict:
         pass
 
     # Variance ratio
-    for q, k in ((2, "vr2"), (5, "vr5"), (8, "vr8"), (16, "vr16")):
+    for q, k in ((2, "vr2"), (4, "vr4"), (8, "vr8"), (16, "vr16")):
         vr, vr_p = _variance_ratio(r, q)
         out[k] = vr
         out[f"{k}_p"] = vr_p
@@ -857,7 +872,7 @@ def write_report(
         "  |VR(q) − 1| closer to 0 = better."
     )
     lines.append("")
-    for q, k in ((2, "vr2"), (5, "vr5"), (8, "vr8"), (16, "vr16")):
+    for q, k in ((2, "vr2"), (4, "vr4"), (8, "vr8"), (16, "vr16")):
         da = abs(ta[k] - 1) if not np.isnan(ta.get(k, np.nan)) else np.nan
         db = abs(tb[k] - 1) if not np.isnan(tb.get(k, np.nan)) else np.nan
         dc = abs(tc[k] - 1) if (has_c and not np.isnan(tc.get(k, np.nan))) else None
@@ -964,14 +979,14 @@ def write_report(
         ("LB p (10)", ta["lb10_p"], tb["lb10_p"], False, _g("lb10_p")),
         ("JB stat", ta["jb_stat"], tb["jb_stat"], True, _g("jb_stat")),
         (
-            "|VR(5)−1|",
-            # FIX: was _abs(ta,"vr5")=abs(raw VR). Must be abs(VR-1), distance from 1.0.
-            abs(ta["vr5"] - 1) if not np.isnan(ta.get("vr5", np.nan)) else np.nan,
-            abs(tb["vr5"] - 1) if not np.isnan(tb.get("vr5", np.nan)) else np.nan,
+            "|VR(4)−1|",
+            # Lo-MacKinlay (1988) standard q values: {2, 4, 8, 16}
+            abs(ta["vr4"] - 1) if not np.isnan(ta.get("vr4", np.nan)) else np.nan,
+            abs(tb["vr4"] - 1) if not np.isnan(tb.get("vr4", np.nan)) else np.nan,
             True,
             (
-                abs(tc["vr5"] - 1)
-                if (has_c and not np.isnan(tc.get("vr5", np.nan)))
+                abs(tc["vr4"] - 1)
+                if (has_c and not np.isnan(tc.get("vr4", np.nan)))
                 else None
             ),
         ),
@@ -1411,8 +1426,8 @@ def plot_figure(
         vr_lo = min(0.80, min(all_vr) - 0.05)
         vr_hi = max(1.20, max(all_vr) + 0.05)
         axF.set_ylim(vr_lo, vr_hi)
-    d_a = abs(ta.get("vr5", np.nan) - 1)
-    d_b = abs(tb.get("vr5", np.nan) - 1)
+    d_a = abs(ta.get("vr4", np.nan) - 1)
+    d_b = abs(tb.get("vr4", np.nan) - 1)
     w_vr = _winner(d_a, d_b, True, la, lb)
     _leg(axF)
     _bold_ticks(axF)
@@ -1420,7 +1435,7 @@ def plot_figure(
     _title(
         axF,
         "Variance Ratio  (Lo-MacKinlay 1988)",
-        f"|VR(5)−1|:  A={_fmt(d_a,3)}  B={_fmt(d_b,3)}  ·  closer to 1 = better",
+        f"|VR(4)−1|:  A={_fmt(d_a,3)}  B={_fmt(d_b,3)}  ·  closer to 1 = better",
     )
 
     # ── [G] Rolling annualised volatility ─────────────────────────────────────
