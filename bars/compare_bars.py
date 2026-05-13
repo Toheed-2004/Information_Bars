@@ -2923,10 +2923,10 @@ _FIG_W   = 7.16   # single-panel width  (IEEE/Elsevier double-column = 7.16 in)
 _FIG_H   = 5.4    # single-panel height — extra vertical room for below-legend
 _FIG_W2  = 14.32  # combined DE width   (2 × 7.16 in, two panels side by side)
 _FIG_H2  = 5.6    # combined DE height
-_FS_TTL  = 13     # panel title — bold, readable at 300 dpi on physical print
-_FS_LBL  = 12     # axis labels
-_FS_TCK  = 11     # tick labels — min readable on A4 printout without zoom
-_FS_LEG  = 10     # legend text
+_FS_TTL  = 16     # panel title — bold, readable at 300 dpi on physical print
+_FS_LBL  = 15     # axis labels
+_FS_TCK  = 15     # tick labels — bold, clearly readable on A4 printout
+_FS_LEG  = 14     # legend text
 _LW_FIT  = 2.4    # fitted curve line width
 _LW_CNF  = 1.8    # confidence-band dashed line width
 _LW_SP   = 1.2    # spine / tick line width
@@ -3085,9 +3085,15 @@ def _draw_panel_D(ax, ra, rb, rc, ta, tb, tc):
     from scipy.stats import gaussian_kde
     import matplotlib.ticker as _mt
 
-    all_r = np.concatenate([ra, rb] + ([rc] if rc is not None else []))
-    lo = np.percentile(all_r, 0.5)
-    hi = np.percentile(all_r, 99.5)
+    # Compute x-axis range from per-series percentiles (union of widest range).
+    # Using the combined-array percentile fails when series have very different
+    # return scales (e.g. Renko: tick std~0.002 vs minute std~0.016), because
+    # 98%+ of combined returns come from the narrower series, setting the x-axis
+    # so tight that 32% of the wider series returns fall outside — making its
+    # KDE and Gaussian appear as an invisible flat line near density=0.
+    _series_r = [ra, rb] + ([rc] if rc is not None else [])
+    lo = min(np.percentile(r, 0.5)  for r in _series_r)
+    hi = max(np.percentile(r, 99.5) for r in _series_r)
     xfit = np.linspace(lo, hi, 500)
 
     series = [
