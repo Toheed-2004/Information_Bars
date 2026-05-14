@@ -1,0 +1,45 @@
+16:40:09  INFO      ==================================================================
+16:40:09  INFO        mlfinlab . bar-comparison pipeline . 20260514_164007
+16:40:09  INFO        Feature mode : unified
+16:40:09  INFO      ==================================================================
+16:40:09  INFO      
+16:40:09  INFO      ==================================================================
+16:40:09  INFO        STAGE 1 . DATA LOADING
+16:40:09  INFO      ==================================================================
+16:40:09  INFO        1minute_dollar_bars.csv                                6311 bars  2024-01-01->2024-12-30  class=unknown       src=unknown
+16:40:09  INFO        1minute_hybrid_bars.csv                                 712 bars  2024-01-01->2024-12-30  class=unknown       src=unknown
+16:40:09  INFO        1minute_range_bars.csv                                  942 bars  2024-01-01->2024-12-30  class=unknown       src=unknown
+16:40:09  INFO        1minute_renko_bars.csv                                 1096 bars  2024-01-01->2024-12-30  class=unknown       src=unknown
+16:40:09  INFO        1minute_volatility_bars.csv                            1283 bars  2024-01-01->2024-12-30  class=unknown       src=unknown
+16:40:09  INFO        1minute_volume_bars.csv                                1808 bars  2024-01-01->2024-12-30  class=unknown       src=unknown
+16:40:09  INFO        binance_btc_12h.csv                                     731 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+16:40:09  INFO        binance_btc_1h.csv                                     8761 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+16:40:09  INFO        binance_btc_4h.csv                                     2191 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+16:40:10  INFO        binance_btc_6h.csv                                     1461 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+16:40:10  INFO        binance_btc_8h.csv                                     1096 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+16:40:10  INFO        binance_btc_dollar_minute_bars.csv                     6073 bars  2024-01-15->2024-12-30  class=information   src=minute
+16:40:10  INFO        binance_btc_dollar_tick_bars.csv                       4822 bars  2024-01-01->2024-12-31  class=information   src=tick
+16:40:10  INFO        binance_btc_hybrid_minute_bars.csv                     5720 bars  2024-01-15->2024-12-30  class=information   src=minute
+16:40:10  INFO        binance_btc_hybrid_tick_bars.csv                       8581 bars  2024-01-01->2024-12-31  class=information   src=tick
+16:40:10  INFO        binance_btc_range_minute_bars.csv                       897 bars  2024-01-15->2024-12-30  class=information   src=minute
+16:40:10  INFO        binance_btc_range_tick_bars.csv                        5902 bars  2024-01-01->2024-12-31  class=information   src=tick
+16:40:10  INFO        binance_btc_renko_minute_bars.csv                      1053 bars  2024-01-15->2024-12-30  class=information   src=minute
+16:40:11  INFO        binance_btc_renko_tick_bars.csv                       66408 bars  2024-01-01->2024-12-31  class=information   src=tick
+16:40:11  INFO        binance_btc_volatility_minute_bars.csv                 1223 bars  2024-01-15->2024-12-30  class=information   src=minute
+16:40:11  INFO        binance_btc_volatility_tick_bars.csv                  16796 bars  2024-01-01->2024-12-31  class=information   src=tick
+16:40:11  INFO        binance_btc_volume_minute_bars.csv                     2004 bars  2024-01-15->2024-12-30  class=information   src=minute
+16:40:11  INFO        binance_btc_volume_tick_bars.csv                       3964 bars  2024-01-01->2024-12-31  class=information   src=tick
+16:40:11  INFO      Loaded 23 dataset(s).
+16:40:11  INFO      
+16:40:11  INFO      >>> 1minute_dollar_bars  (6311 bars)  [unknown . unknown]
+16:40:11  INFO      
+16:40:11  INFO      ==================================================================
+16:40:11  INFO        STAGE 2 . LABELING + FEATURES  [1minute_dollar_bars]  [mode=unified]
+16:40:11  INFO      ==================================================================
+16:40:11  INFO        Computing volatility & sampling events ...
+16:40:11  INFO        Events sampled : 4230
+16:40:11  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+16:40:40  INFO        Labels : {1.0: 2262, 0.0: 1967}  (n=4229)
+16:40:40  INFO        Finding minimum FFD d ...
+16:40:40  INFO        min_d=0.30  d_used=0.30
+16:40:40  INFO        Building features [mode=unified] ...
