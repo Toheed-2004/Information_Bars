@@ -129,8 +129,10 @@ CFG = {
     "min_events"         : 10,
 
     # features
-    "frac_diff_step"     : 0.1,
-    "frac_diff_max_d"    : 1.0,
+    "frac_diff_step"      : 0.1,
+    "frac_diff_max_d"     : 1.0,
+    "frac_diff_threshold" : 1e-3,   # weight cutoff; 1e-3 gives ~73 bar window
+                                     # vs 1e-5 which gives ~3382 (55% NaN)
     "rsi_period"         : 14,
     "bb_period"          : 20,
     "atr_period"         : 14,
@@ -290,20 +292,45 @@ def _build_unified_features(
     """
     close = bars["close"]
 
+    # All features must be stationary before entering a model.
+    # Non-stationary features (those that track the raw BTC price level)
+    # are replaced with their stationary equivalents:
+    #
+    #   macd_macd / macd_signal  -> normalised by close price  (dimensionless)
+    #   bb_upper/mid/lower       -> removed; keep only bb_bandwidth and bb_pct_b
+    #                               (both are ratios, already stationary)
+    #   vwap_rolling             -> replaced by vwap_dev = (vwap-close)/close
+    #                               (deviation from close, dimensionless)
+    #   oc_return                -> removed from bar_features (always ~0 on Binance)
+    #
+    # RSI, ATR/close (natr), zscore, frac_diff_close are already stationary.
+
+    _macd = macd(close)
+    _bb   = bollinger_bands(close, CFG["bb_period"])
+
     tech = pd.concat([
         rsi(close, CFG["rsi_period"]).rename("rsi"),
-        macd(close).add_prefix("macd_"),
-        bollinger_bands(close, CFG["bb_period"]).add_prefix("bb_"),
-        atr(bars, CFG["atr_period"]),
-        vwap(bars, CFG["vwap_window"]).rename("vwap_rolling"),  # OHLCV proxy
+        # MACD normalised by close -> dimensionless, stationary
+        (_macd["macd"]      / close).rename("macd_norm"),
+        (_macd["signal"]    / close).rename("macd_signal_norm"),
+        (_macd["histogram"] / close).rename("macd_hist_norm"),
+        # Bollinger: keep only the two stationary derived columns
+        _bb["bb_bandwidth"].rename("bb_bandwidth"),
+        _bb["bb_pct_b"].rename("bb_pct_b"),
+        # ATR: use natr (ATR/close) not raw ATR
+        atr(bars, CFG["atr_period"])[["natr"]],
+        # VWAP deviation from close (stationary), not raw VWAP level
+        vwap(bars, CFG["vwap_window"]).sub(close).div(close).rename("vwap_dev"),
         zscore(close, CFG["zscore_window"]).rename("zscore"),
-        fd_close,                                               # FFD on log-close
+        fd_close,
     ], axis=1)
 
     # bar_features with log_price=False stays OHLCV-only
     micro = bar_features(bars, log_price=False)
     # Drop columns already in tech to avoid duplicates
-    micro = micro.drop(columns=[c for c in ("rsi_14", "vwap")
+    # Drop duplicates with tech AND oc_return (always ~0 on Binance,
+    # zero variance, no predictive value for any bar type)
+    micro = micro.drop(columns=[c for c in ("rsi_14", "vwap", "oc_return")
                                  if c in micro.columns])
 
     features = pd.concat([tech, micro], axis=1)
@@ -513,10 +540,24 @@ def stage_labeling_features(
     close = bars["close"]
 
     # -- 2a. Event sampling
-    log.info("  Computing volatility & sampling events ...")
-    vol      = daily_vol(close, lookback=CFG["vol_lookback"])
-    t_events = cusum_filter(close, threshold=vol * CFG["cusum_mult"])
-    log.info("  Events sampled : %d", len(t_events))
+    # Calendar bars: CUSUM filter needed - bars are clock-based so many
+    #   bars capture nothing interesting. CUSUM samples only when price
+    #   deviation is large enough to be worth labeling.
+    # Information bars: every bar IS an event by construction - the bar
+    #   only formed because enough volume/dollars/volatility occurred.
+    #   CUSUM would double-filter and discard valid training samples.
+    log.info("  Computing volatility ...")
+    vol = daily_vol(close, lookback=CFG["vol_lookback"])
+
+    if meta["bar_class"] == "calendar":
+        log.info("  Calendar bars -> applying CUSUM filter ...")
+        t_events = cusum_filter(close, threshold=vol * CFG["cusum_mult"])
+        log.info("  Events sampled : %d / %d bars (%.0f%%)",
+                 len(t_events), len(close), 100*len(t_events)/len(close))
+    else:
+        log.info("  Information bars -> every bar is an event (no CUSUM) ...")
+        t_events = pd.DatetimeIndex(close.index)
+        log.info("  Events : %d (all bars)", len(t_events))
     if len(t_events) < CFG["min_events"]:
         log.warning("  Too few events -- skipping %s", name)
         return None
@@ -541,9 +582,11 @@ def stage_labeling_features(
     log_close = np.log(close)
     min_d     = find_min_d(log_close,
                            d_range=(0.0, CFG["frac_diff_max_d"]),
-                           step=CFG["frac_diff_step"])
+                           step=CFG["frac_diff_step"],
+                           threshold=CFG["frac_diff_threshold"])
     d_used    = max(min_d, CFG["frac_diff_step"])
-    fd_close  = frac_diff_ffd(log_close, d=d_used).rename("frac_diff_close")
+    fd_close  = frac_diff_ffd(log_close, d=d_used,
+                              threshold=CFG["frac_diff_threshold"]).rename("frac_diff_close")
     log.info("  min_d=%.2f  d_used=%.2f", min_d, d_used)
 
     # -- 2d. Feature matrix via selected mode
@@ -581,6 +624,20 @@ def stage_labeling_features(
     result["bar_class"]    = meta.get("bar_class", "unknown")
     result["min_d"]        = d_used
     result["feature_mode"] = feature_mode
+
+    # Drop warm-up rows where any feature is NaN.
+    # These are the first ~70 bars where rolling windows (BB=20, vol_20,
+    # frac_diff window) have not yet accumulated enough history.
+    # Labels and weights are never NaN - only features are affected.
+    feature_cols = [c for c in result.columns
+                    if c not in ('ret','bin','weight','bar_type',
+                                 'source','bar_class','min_d','feature_mode')]
+    before = len(result)
+    result = result.dropna(subset=feature_cols)
+    dropped = before - len(result)
+    if dropped:
+        log.info("  Dropped %d warm-up rows with NaN features (%.1f%%)",
+                 dropped, dropped/before*100)
 
     log.info("  Final frame : %d samples x %d features", len(result), X.shape[1])
     _save(result, name, f"labeling_{feature_mode}", no_save)
