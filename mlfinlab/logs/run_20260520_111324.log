@@ -1,0 +1,773 @@
+11:13:28  INFO      ==================================================================
+11:13:28  INFO        mlfinlab . bar-comparison pipeline . 20260520_111324
+11:13:28  INFO        Feature mode : unified
+11:13:28  INFO      ==================================================================
+11:13:28  INFO      
+11:13:28  INFO      ==================================================================
+11:13:28  INFO        STAGE 1 . DATA LOADING
+11:13:28  INFO      ==================================================================
+11:13:28  INFO        binance_btc_12h.csv                                     731 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+11:13:28  INFO        binance_btc_1h.csv                                     8761 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+11:13:28  INFO        binance_btc_4h.csv                                     2191 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+11:13:28  INFO        binance_btc_6h.csv                                     1461 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+11:13:28  INFO        binance_btc_8h.csv                                     1096 bars  2024-01-01->2024-12-31  class=calendar      src=calendar
+11:13:28  INFO        binance_btc_dollar_minute_bars.csv                     6073 bars  2024-01-15->2024-12-30  class=information   src=minute
+11:13:28  INFO        binance_btc_dollar_tick_bars.csv                       4822 bars  2024-01-01->2024-12-31  class=information   src=tick
+11:13:28  INFO        binance_btc_hybrid_minute_bars.csv                     5720 bars  2024-01-15->2024-12-30  class=information   src=minute
+11:13:28  INFO        binance_btc_hybrid_tick_bars.csv                       8581 bars  2024-01-01->2024-12-31  class=information   src=tick
+11:13:28  INFO        binance_btc_range_minute_bars.csv                       897 bars  2024-01-15->2024-12-30  class=information   src=minute
+11:13:28  INFO        binance_btc_range_tick_bars.csv                        5902 bars  2024-01-01->2024-12-31  class=information   src=tick
+11:13:28  INFO        binance_btc_renko_minute_bars.csv                      1053 bars  2024-01-15->2024-12-30  class=information   src=minute
+11:13:29  INFO        binance_btc_renko_tick_bars.csv                       66408 bars  2024-01-01->2024-12-31  class=information   src=tick
+11:13:29  INFO        binance_btc_volatility_minute_bars.csv                 1223 bars  2024-01-15->2024-12-30  class=information   src=minute
+11:13:30  INFO        binance_btc_volatility_tick_bars.csv                  16796 bars  2024-01-01->2024-12-31  class=information   src=tick
+11:13:30  INFO        binance_btc_volume_minute_bars.csv                     2004 bars  2024-01-15->2024-12-30  class=information   src=minute
+11:13:30  INFO        binance_btc_volume_tick_bars.csv                       3964 bars  2024-01-01->2024-12-31  class=information   src=tick
+11:13:30  INFO      Loaded 17 dataset(s).
+11:13:30  INFO      
+11:13:30  INFO      >>> binance_btc_12h  (731 bars)  [calendar . calendar]
+11:13:30  INFO      
+11:13:30  INFO      ==================================================================
+11:13:30  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_12h]  [mode=unified]
+11:13:30  INFO      ==================================================================
+11:13:30  INFO        Computing volatility ...
+11:13:30  INFO        Calendar bars -> applying CUSUM filter ...
+11:13:30  INFO        Events sampled : 409 / 731 bars (56%)
+11:13:30  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:13:31  INFO        Labels : {1.0: 233, -1.0: 172}  (n=405)
+11:13:31  INFO        Finding minimum FFD d ...
+11:13:31  INFO        min_d=0.20  d_used=0.20
+11:13:31  INFO        Building features [mode=unified] ...
+11:13:32  INFO        Features : 28 cols  (28 unified + 0 native)
+11:13:32  INFO        Computing sample weights ...
+11:13:32  INFO        Dropped 34 warm-up rows with NaN features (8.4%)
+11:13:32  INFO        Final frame : 371 samples x 28 features
+11:13:32  INFO        Saved -> binance_btc_12h__labeling_unified__20260520_111324.csv
+11:13:32  INFO      
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        STAGE 3 . MODELS  [binance_btc_12h]  -- implement in mlfinlab/models/
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        Input  : 371 samples x 36 cols
+11:13:32  INFO        Labels : {1.0: 215, -1.0: 156}
+11:13:32  INFO        Mode   : unified
+11:13:32  INFO        [ stub ]
+11:13:32  INFO      
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        STAGE 4 . PREDICTION  [binance_btc_12h]  -- implement in mlfinlab/signals/
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        [ stub ]
+11:13:32  INFO      
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        STAGE 5 . BACKTEST  [binance_btc_12h]  -- implement in mlfinlab/backtest/
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:13:32  INFO        Capital : $10000
+11:13:32  INFO        [ stub ]
+11:13:32  INFO      
+11:13:32  INFO      >>> binance_btc_1h  (8761 bars)  [calendar . calendar]
+11:13:32  INFO      
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_1h]  [mode=unified]
+11:13:32  INFO      ==================================================================
+11:13:32  INFO        Computing volatility ...
+11:13:32  INFO        Calendar bars -> applying CUSUM filter ...
+11:13:32  INFO        Events sampled : 4937 / 8761 bars (56%)
+11:13:32  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:14:10  INFO        Labels : {1.0: 2583, -1.0: 2350}  (n=4933)
+11:14:10  INFO        Finding minimum FFD d ...
+11:14:10  INFO        min_d=0.20  d_used=0.20
+11:14:10  INFO        Building features [mode=unified] ...
+11:14:17  INFO        Features : 28 cols  (28 unified + 0 native)
+11:14:17  INFO        Computing sample weights ...
+11:14:24  INFO        Dropped 47 warm-up rows with NaN features (1.0%)
+11:14:24  INFO        Final frame : 4886 samples x 28 features
+11:14:25  INFO        Saved -> binance_btc_1h__labeling_unified__20260520_111324.csv
+11:14:25  INFO      
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        STAGE 3 . MODELS  [binance_btc_1h]  -- implement in mlfinlab/models/
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        Input  : 4886 samples x 36 cols
+11:14:25  INFO        Labels : {1.0: 2558, -1.0: 2328}
+11:14:25  INFO        Mode   : unified
+11:14:25  INFO        [ stub ]
+11:14:25  INFO      
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        STAGE 4 . PREDICTION  [binance_btc_1h]  -- implement in mlfinlab/signals/
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        [ stub ]
+11:14:25  INFO      
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        STAGE 5 . BACKTEST  [binance_btc_1h]  -- implement in mlfinlab/backtest/
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:14:25  INFO        Capital : $10000
+11:14:25  INFO        [ stub ]
+11:14:25  INFO      
+11:14:25  INFO      >>> binance_btc_4h  (2191 bars)  [calendar . calendar]
+11:14:25  INFO      
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_4h]  [mode=unified]
+11:14:25  INFO      ==================================================================
+11:14:25  INFO        Computing volatility ...
+11:14:25  INFO        Calendar bars -> applying CUSUM filter ...
+11:14:25  INFO        Events sampled : 1201 / 2191 bars (55%)
+11:14:25  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:14:29  INFO        Labels : {1.0: 652, -1.0: 546}  (n=1198)
+11:14:29  INFO        Finding minimum FFD d ...
+11:14:29  INFO        min_d=0.20  d_used=0.20
+11:14:29  INFO        Building features [mode=unified] ...
+11:14:31  INFO        Features : 28 cols  (28 unified + 0 native)
+11:14:31  INFO        Computing sample weights ...
+11:14:34  INFO        Dropped 41 warm-up rows with NaN features (3.4%)
+11:14:34  INFO        Final frame : 1157 samples x 28 features
+11:14:34  INFO        Saved -> binance_btc_4h__labeling_unified__20260520_111324.csv
+11:14:34  INFO      
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        STAGE 3 . MODELS  [binance_btc_4h]  -- implement in mlfinlab/models/
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        Input  : 1157 samples x 36 cols
+11:14:34  INFO        Labels : {1.0: 630, -1.0: 527}
+11:14:34  INFO        Mode   : unified
+11:14:34  INFO        [ stub ]
+11:14:34  INFO      
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        STAGE 4 . PREDICTION  [binance_btc_4h]  -- implement in mlfinlab/signals/
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        [ stub ]
+11:14:34  INFO      
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        STAGE 5 . BACKTEST  [binance_btc_4h]  -- implement in mlfinlab/backtest/
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:14:34  INFO        Capital : $10000
+11:14:34  INFO        [ stub ]
+11:14:34  INFO      
+11:14:34  INFO      >>> binance_btc_6h  (1461 bars)  [calendar . calendar]
+11:14:34  INFO      
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_6h]  [mode=unified]
+11:14:34  INFO      ==================================================================
+11:14:34  INFO        Computing volatility ...
+11:14:34  INFO        Calendar bars -> applying CUSUM filter ...
+11:14:34  INFO        Events sampled : 768 / 1461 bars (53%)
+11:14:34  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:14:37  INFO        Labels : {1.0: 425, -1.0: 339}  (n=764)
+11:14:37  INFO        Finding minimum FFD d ...
+11:14:37  INFO        min_d=0.20  d_used=0.20
+11:14:37  INFO        Building features [mode=unified] ...
+11:14:38  INFO        Features : 28 cols  (28 unified + 0 native)
+11:14:38  INFO        Computing sample weights ...
+11:14:39  INFO        Dropped 34 warm-up rows with NaN features (4.5%)
+11:14:39  INFO        Final frame : 730 samples x 28 features
+11:14:39  INFO        Saved -> binance_btc_6h__labeling_unified__20260520_111324.csv
+11:14:39  INFO      
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        STAGE 3 . MODELS  [binance_btc_6h]  -- implement in mlfinlab/models/
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        Input  : 730 samples x 36 cols
+11:14:39  INFO        Labels : {1.0: 412, -1.0: 318}
+11:14:39  INFO        Mode   : unified
+11:14:39  INFO        [ stub ]
+11:14:39  INFO      
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        STAGE 4 . PREDICTION  [binance_btc_6h]  -- implement in mlfinlab/signals/
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        [ stub ]
+11:14:39  INFO      
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        STAGE 5 . BACKTEST  [binance_btc_6h]  -- implement in mlfinlab/backtest/
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:14:39  INFO        Capital : $10000
+11:14:39  INFO        [ stub ]
+11:14:39  INFO      
+11:14:39  INFO      >>> binance_btc_8h  (1096 bars)  [calendar . calendar]
+11:14:39  INFO      
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_8h]  [mode=unified]
+11:14:39  INFO      ==================================================================
+11:14:39  INFO        Computing volatility ...
+11:14:39  INFO        Calendar bars -> applying CUSUM filter ...
+11:14:39  INFO        Events sampled : 593 / 1096 bars (54%)
+11:14:39  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:14:40  INFO        Labels : {1.0: 328, -1.0: 261}  (n=589)
+11:14:40  INFO        Finding minimum FFD d ...
+11:14:40  INFO        min_d=0.20  d_used=0.20
+11:14:40  INFO        Building features [mode=unified] ...
+11:14:42  INFO        Features : 28 cols  (28 unified + 0 native)
+11:14:42  INFO        Computing sample weights ...
+11:14:42  INFO        Dropped 33 warm-up rows with NaN features (5.6%)
+11:14:42  INFO        Final frame : 556 samples x 28 features
+11:14:42  INFO        Saved -> binance_btc_8h__labeling_unified__20260520_111324.csv
+11:14:42  INFO      
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        STAGE 3 . MODELS  [binance_btc_8h]  -- implement in mlfinlab/models/
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        Input  : 556 samples x 36 cols
+11:14:42  INFO        Labels : {1.0: 315, -1.0: 241}
+11:14:42  INFO        Mode   : unified
+11:14:42  INFO        [ stub ]
+11:14:42  INFO      
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        STAGE 4 . PREDICTION  [binance_btc_8h]  -- implement in mlfinlab/signals/
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        [ stub ]
+11:14:42  INFO      
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        STAGE 5 . BACKTEST  [binance_btc_8h]  -- implement in mlfinlab/backtest/
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:14:42  INFO        Capital : $10000
+11:14:42  INFO        [ stub ]
+11:14:42  INFO      
+11:14:42  INFO      >>> binance_btc_dollar_minute_bars  (6073 bars)  [information . minute]
+11:14:42  INFO      
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_dollar_minute_bars]  [mode=unified]
+11:14:42  INFO      ==================================================================
+11:14:42  INFO        Computing volatility ...
+11:14:42  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:14:42  INFO        Events : 6073 (all bars)
+11:14:42  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:15:37  INFO        Labels : {1.0: 3285, -1.0: 2784}  (n=6069)
+11:15:37  INFO        Finding minimum FFD d ...
+11:15:37  INFO        min_d=0.20  d_used=0.20
+11:15:37  INFO        Building features [mode=unified] ...
+11:15:42  INFO        Features : 28 cols  (28 unified + 0 native)
+11:15:42  INFO        Computing sample weights ...
+11:15:50  INFO        Dropped 70 warm-up rows with NaN features (1.2%)
+11:15:50  INFO        Final frame : 5999 samples x 28 features
+11:15:51  INFO        Saved -> binance_btc_dollar_minute_bars__labeling_unified__20260520_111324.csv
+11:15:51  INFO      
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        STAGE 3 . MODELS  [binance_btc_dollar_minute_bars]  -- implement in mlfinlab/models/
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        Input  : 5999 samples x 36 cols
+11:15:51  INFO        Labels : {1.0: 3268, -1.0: 2731}
+11:15:51  INFO        Mode   : unified
+11:15:51  INFO        [ stub ]
+11:15:51  INFO      
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        STAGE 4 . PREDICTION  [binance_btc_dollar_minute_bars]  -- implement in mlfinlab/signals/
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        [ stub ]
+11:15:51  INFO      
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        STAGE 5 . BACKTEST  [binance_btc_dollar_minute_bars]  -- implement in mlfinlab/backtest/
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:15:51  INFO        Capital : $10000
+11:15:51  INFO        [ stub ]
+11:15:51  INFO      
+11:15:51  INFO      >>> binance_btc_dollar_tick_bars  (4822 bars)  [information . tick]
+11:15:51  INFO      
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_dollar_tick_bars]  [mode=unified]
+11:15:51  INFO      ==================================================================
+11:15:51  INFO        Computing volatility ...
+11:15:51  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:15:51  INFO        Events : 4822 (all bars)
+11:15:51  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:16:29  INFO        Labels : {1.0: 2523, -1.0: 2292}  (n=4815)
+11:16:29  INFO        Finding minimum FFD d ...
+11:16:29  INFO        min_d=0.20  d_used=0.20
+11:16:29  INFO        Building features [mode=unified] ...
+11:16:33  INFO        Features : 28 cols  (28 unified + 0 native)
+11:16:33  INFO        Computing sample weights ...
+11:16:39  INFO        Dropped 70 warm-up rows with NaN features (1.5%)
+11:16:39  INFO        Final frame : 4745 samples x 28 features
+11:16:39  INFO        Saved -> binance_btc_dollar_tick_bars__labeling_unified__20260520_111324.csv
+11:16:39  INFO      
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        STAGE 3 . MODELS  [binance_btc_dollar_tick_bars]  -- implement in mlfinlab/models/
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        Input  : 4745 samples x 36 cols
+11:16:39  INFO        Labels : {1.0: 2491, -1.0: 2254}
+11:16:39  INFO        Mode   : unified
+11:16:39  INFO        [ stub ]
+11:16:39  INFO      
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        STAGE 4 . PREDICTION  [binance_btc_dollar_tick_bars]  -- implement in mlfinlab/signals/
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        [ stub ]
+11:16:39  INFO      
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        STAGE 5 . BACKTEST  [binance_btc_dollar_tick_bars]  -- implement in mlfinlab/backtest/
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:16:39  INFO        Capital : $10000
+11:16:39  INFO        [ stub ]
+11:16:39  INFO      
+11:16:39  INFO      >>> binance_btc_hybrid_minute_bars  (5720 bars)  [information . minute]
+11:16:39  INFO      
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_hybrid_minute_bars]  [mode=unified]
+11:16:39  INFO      ==================================================================
+11:16:39  INFO        Computing volatility ...
+11:16:39  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:16:39  INFO        Events : 5720 (all bars)
+11:16:39  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:17:59  INFO        Labels : {1.0: 3075, -1.0: 2640}  (n=5715)
+11:17:59  INFO        Finding minimum FFD d ...
+11:17:59  INFO        min_d=0.20  d_used=0.20
+11:17:59  INFO        Building features [mode=unified] ...
+11:18:03  INFO        Features : 28 cols  (28 unified + 0 native)
+11:18:03  INFO        Computing sample weights ...
+11:18:09  INFO        Dropped 70 warm-up rows with NaN features (1.2%)
+11:18:09  INFO        Final frame : 5645 samples x 28 features
+11:18:09  INFO        Saved -> binance_btc_hybrid_minute_bars__labeling_unified__20260520_111324.csv
+11:18:09  INFO      
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        STAGE 3 . MODELS  [binance_btc_hybrid_minute_bars]  -- implement in mlfinlab/models/
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        Input  : 5645 samples x 36 cols
+11:18:09  INFO        Labels : {1.0: 3065, -1.0: 2580}
+11:18:09  INFO        Mode   : unified
+11:18:09  INFO        [ stub ]
+11:18:09  INFO      
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        STAGE 4 . PREDICTION  [binance_btc_hybrid_minute_bars]  -- implement in mlfinlab/signals/
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        [ stub ]
+11:18:09  INFO      
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        STAGE 5 . BACKTEST  [binance_btc_hybrid_minute_bars]  -- implement in mlfinlab/backtest/
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:18:09  INFO        Capital : $10000
+11:18:09  INFO        [ stub ]
+11:18:09  INFO      
+11:18:09  INFO      >>> binance_btc_hybrid_tick_bars  (8581 bars)  [information . tick]
+11:18:09  INFO      
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_hybrid_tick_bars]  [mode=unified]
+11:18:09  INFO      ==================================================================
+11:18:09  INFO        Computing volatility ...
+11:18:09  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:18:09  INFO        Events : 8581 (all bars)
+11:18:09  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:19:42  INFO        Labels : {1.0: 4492, -1.0: 4082}  (n=8574)
+11:19:42  INFO        Finding minimum FFD d ...
+11:19:42  INFO        min_d=0.20  d_used=0.20
+11:19:42  INFO        Building features [mode=unified] ...
+11:19:49  INFO        Features : 28 cols  (28 unified + 0 native)
+11:19:49  INFO        Computing sample weights ...
+11:20:02  INFO        Dropped 70 warm-up rows with NaN features (0.8%)
+11:20:02  INFO        Final frame : 8504 samples x 28 features
+11:20:02  INFO        Saved -> binance_btc_hybrid_tick_bars__labeling_unified__20260520_111324.csv
+11:20:02  INFO      
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        STAGE 3 . MODELS  [binance_btc_hybrid_tick_bars]  -- implement in mlfinlab/models/
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        Input  : 8504 samples x 36 cols
+11:20:02  INFO        Labels : {1.0: 4463, -1.0: 4041}
+11:20:02  INFO        Mode   : unified
+11:20:02  INFO        [ stub ]
+11:20:02  INFO      
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        STAGE 4 . PREDICTION  [binance_btc_hybrid_tick_bars]  -- implement in mlfinlab/signals/
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        [ stub ]
+11:20:02  INFO      
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        STAGE 5 . BACKTEST  [binance_btc_hybrid_tick_bars]  -- implement in mlfinlab/backtest/
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:20:02  INFO        Capital : $10000
+11:20:02  INFO        [ stub ]
+11:20:02  INFO      
+11:20:02  INFO      >>> binance_btc_range_minute_bars  (897 bars)  [information . minute]
+11:20:02  INFO      
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_range_minute_bars]  [mode=unified]
+11:20:02  INFO      ==================================================================
+11:20:02  INFO        Computing volatility ...
+11:20:02  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:20:02  INFO        Events : 897 (all bars)
+11:20:02  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:20:05  INFO        Labels : {1.0: 482, -1.0: 407}  (n=889)
+11:20:05  INFO        Finding minimum FFD d ...
+11:20:05  INFO        min_d=0.20  d_used=0.20
+11:20:05  INFO        Building features [mode=unified] ...
+11:20:06  INFO        Features : 28 cols  (28 unified + 0 native)
+11:20:06  INFO        Computing sample weights ...
+11:20:06  INFO        Dropped 70 warm-up rows with NaN features (7.9%)
+11:20:06  INFO        Final frame : 819 samples x 28 features
+11:20:06  INFO        Saved -> binance_btc_range_minute_bars__labeling_unified__20260520_111324.csv
+11:20:06  INFO      
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        STAGE 3 . MODELS  [binance_btc_range_minute_bars]  -- implement in mlfinlab/models/
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        Input  : 819 samples x 36 cols
+11:20:06  INFO        Labels : {1.0: 435, -1.0: 384}
+11:20:06  INFO        Mode   : unified
+11:20:06  INFO        [ stub ]
+11:20:06  INFO      
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        STAGE 4 . PREDICTION  [binance_btc_range_minute_bars]  -- implement in mlfinlab/signals/
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        [ stub ]
+11:20:06  INFO      
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        STAGE 5 . BACKTEST  [binance_btc_range_minute_bars]  -- implement in mlfinlab/backtest/
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:20:06  INFO        Capital : $10000
+11:20:06  INFO        [ stub ]
+11:20:06  INFO      
+11:20:06  INFO      >>> binance_btc_range_tick_bars  (5902 bars)  [information . tick]
+11:20:06  INFO      
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_range_tick_bars]  [mode=unified]
+11:20:06  INFO      ==================================================================
+11:20:06  INFO        Computing volatility ...
+11:20:06  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:20:06  INFO        Events : 5902 (all bars)
+11:20:06  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:20:57  INFO        Labels : {1.0: 3099, -1.0: 2797}  (n=5896)
+11:20:57  INFO        Finding minimum FFD d ...
+11:20:57  INFO        min_d=0.20  d_used=0.20
+11:20:57  INFO        Building features [mode=unified] ...
+11:21:01  INFO        Features : 28 cols  (28 unified + 0 native)
+11:21:01  INFO        Computing sample weights ...
+11:21:08  INFO        Dropped 70 warm-up rows with NaN features (1.2%)
+11:21:08  INFO        Final frame : 5826 samples x 28 features
+11:21:09  INFO        Saved -> binance_btc_range_tick_bars__labeling_unified__20260520_111324.csv
+11:21:09  INFO      
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        STAGE 3 . MODELS  [binance_btc_range_tick_bars]  -- implement in mlfinlab/models/
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        Input  : 5826 samples x 36 cols
+11:21:09  INFO        Labels : {1.0: 3049, -1.0: 2777}
+11:21:09  INFO        Mode   : unified
+11:21:09  INFO        [ stub ]
+11:21:09  INFO      
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        STAGE 4 . PREDICTION  [binance_btc_range_tick_bars]  -- implement in mlfinlab/signals/
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        [ stub ]
+11:21:09  INFO      
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        STAGE 5 . BACKTEST  [binance_btc_range_tick_bars]  -- implement in mlfinlab/backtest/
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:21:09  INFO        Capital : $10000
+11:21:09  INFO        [ stub ]
+11:21:09  INFO      
+11:21:09  INFO      >>> binance_btc_renko_minute_bars  (1053 bars)  [information . minute]
+11:21:09  INFO      
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_renko_minute_bars]  [mode=unified]
+11:21:09  INFO      ==================================================================
+11:21:09  INFO        Computing volatility ...
+11:21:09  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:21:09  INFO        Events : 1053 (all bars)
+11:21:09  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+11:21:13  INFO        Labels : {1.0: 571, -1.0: 474}  (n=1045)
+11:21:13  INFO        Finding minimum FFD d ...
+11:21:13  INFO        min_d=0.20  d_used=0.20
+11:21:13  INFO        Building features [mode=unified] ...
+11:21:14  INFO        Features : 28 cols  (28 unified + 0 native)
+11:21:14  INFO        Computing sample weights ...
+11:21:16  INFO        Dropped 70 warm-up rows with NaN features (6.7%)
+11:21:16  INFO        Final frame : 975 samples x 28 features
+11:21:16  INFO        Saved -> binance_btc_renko_minute_bars__labeling_unified__20260520_111324.csv
+11:21:16  INFO      
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        STAGE 3 . MODELS  [binance_btc_renko_minute_bars]  -- implement in mlfinlab/models/
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        Input  : 975 samples x 36 cols
+11:21:16  INFO        Labels : {1.0: 531, -1.0: 444}
+11:21:16  INFO        Mode   : unified
+11:21:16  INFO        [ stub ]
+11:21:16  INFO      
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        STAGE 4 . PREDICTION  [binance_btc_renko_minute_bars]  -- implement in mlfinlab/signals/
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        [ stub ]
+11:21:16  INFO      
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        STAGE 5 . BACKTEST  [binance_btc_renko_minute_bars]  -- implement in mlfinlab/backtest/
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+11:21:16  INFO        Capital : $10000
+11:21:16  INFO        [ stub ]
+11:21:16  INFO      
+11:21:16  INFO      >>> binance_btc_renko_tick_bars  (66408 bars)  [information . tick]
+11:21:16  INFO      
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_renko_tick_bars]  [mode=unified]
+11:21:16  INFO      ==================================================================
+11:21:16  INFO        Computing volatility ...
+11:21:16  INFO        Information bars -> every bar is an event (no CUSUM) ...
+11:21:16  INFO        Events : 66408 (all bars)
+11:21:16  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+13:06:18  INFO        Labels : {-1.0: 33434, 1.0: 32959}  (n=66393)
+13:06:18  INFO        Finding minimum FFD d ...
+13:06:19  INFO        min_d=0.20  d_used=0.20
+13:06:19  INFO        Building features [mode=unified] ...
+13:07:15  INFO        Features : 28 cols  (28 unified + 0 native)
+13:07:15  INFO        Computing sample weights ...
+13:11:57  ERROR       ERROR in binance_btc_renko_tick_bars:
+Traceback (most recent call last):
+  File "d:\Information_Bars_Research\mlfinlab\main.py", line 939, in main
+    # Still print labeling summary
+                       ^^^^^^^^^^^
+  File "d:\Information_Bars_Research\mlfinlab\main.py", line 612, in stage_labeling_features
+    step=CFG["frac_diff_step"],
+  File "D:\Information_Bars_Research\mlfinlab\features\sample_weights.py", line 240, in get_sample_weights_time_decay
+    w = get_sample_weights_return(t1, close)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Information_Bars_Research\mlfinlab\features\sample_weights.py", line 199, in get_sample_weights_return
+    avg_u = get_avg_uniqueness(ind_m)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Information_Bars_Research\mlfinlab\features\sample_weights.py", line 124, in get_avg_uniqueness
+    uniq = ind_m.div(conc, axis=0)    # 0 where event not active
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\frame.py", line 8423, in truediv
+    return self._flex_arith_method(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\frame.py", line 8291, in _flex_arith_method
+    new_data = self._combine_frame(other, op, fill_value)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\frame.py", line 8033, in _combine_frame
+    new_data = self._dispatch_frame_op(other, _arith_op)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\frame.py", line 7978, in _dispatch_frame_op
+    bm = self._mgr.operate_blockwise(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\internals\managers.py", line 1530, in operate_blockwise
+    return operate_blockwise(self, other, array_op)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\internals\ops.py", line 65, in operate_blockwise
+    res_values = array_op(lvals, rvals)
+                 ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\ops\array_ops.py", line 283, in arithmetic_op
+    res_values = _na_arithmetic_op(left, right, op)  # type: ignore[arg-type]
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\ops\array_ops.py", line 218, in _na_arithmetic_op
+    result = func(left, right)
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\computation\expressions.py", line 242, in evaluate
+    return _evaluate(op, op_str, a, b)  # type: ignore[misc]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\pandas\core\computation\expressions.py", line 108, in _evaluate_numexpr
+    result = ne.evaluate(
+             ^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\numexpr\necompiler.py", line 989, in evaluate
+    return re_evaluate(local_dict=local_dict, global_dict=global_dict, _frame_depth=_frame_depth)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\It complex\miniconda3\envs\bitpredict\Lib\site-packages\numexpr\necompiler.py", line 1022, in re_evaluate
+    return compiled_ex(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 32.8 GiB for an array with shape (66288, 66408) and data type float64
+
+13:12:00  INFO      
+13:12:00  INFO      >>> binance_btc_volatility_minute_bars  (1223 bars)  [information . minute]
+13:12:00  INFO      
+13:12:00  INFO      ==================================================================
+13:12:00  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_volatility_minute_bars]  [mode=unified]
+13:12:00  INFO      ==================================================================
+13:12:00  INFO        Computing volatility ...
+13:12:00  INFO        Information bars -> every bar is an event (no CUSUM) ...
+13:12:00  INFO        Events : 1223 (all bars)
+13:12:00  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+13:12:06  INFO        Labels : {1.0: 660, -1.0: 554}  (n=1214)
+13:12:06  INFO        Finding minimum FFD d ...
+13:12:06  INFO        min_d=0.20  d_used=0.20
+13:12:06  INFO        Building features [mode=unified] ...
+13:12:07  INFO        Features : 28 cols  (28 unified + 0 native)
+13:12:07  INFO        Computing sample weights ...
+13:12:08  INFO        Dropped 70 warm-up rows with NaN features (5.8%)
+13:12:08  INFO        Final frame : 1144 samples x 28 features
+13:12:08  INFO        Saved -> binance_btc_volatility_minute_bars__labeling_unified__20260520_111324.csv
+13:12:08  INFO      
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        STAGE 3 . MODELS  [binance_btc_volatility_minute_bars]  -- implement in mlfinlab/models/
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        Input  : 1144 samples x 36 cols
+13:12:08  INFO        Labels : {1.0: 617, -1.0: 527}
+13:12:08  INFO        Mode   : unified
+13:12:08  INFO        [ stub ]
+13:12:08  INFO      
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        STAGE 4 . PREDICTION  [binance_btc_volatility_minute_bars]  -- implement in mlfinlab/signals/
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        [ stub ]
+13:12:08  INFO      
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        STAGE 5 . BACKTEST  [binance_btc_volatility_minute_bars]  -- implement in mlfinlab/backtest/
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+13:12:08  INFO        Capital : $10000
+13:12:08  INFO        [ stub ]
+13:12:08  INFO      
+13:12:08  INFO      >>> binance_btc_volatility_tick_bars  (16796 bars)  [information . tick]
+13:12:08  INFO      
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_volatility_tick_bars]  [mode=unified]
+13:12:08  INFO      ==================================================================
+13:12:08  INFO        Computing volatility ...
+13:12:08  INFO        Information bars -> every bar is an event (no CUSUM) ...
+13:12:08  INFO        Events : 16796 (all bars)
+13:12:08  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+13:18:21  INFO        Labels : {1.0: 8611, -1.0: 8175}  (n=16786)
+13:18:21  INFO        Finding minimum FFD d ...
+13:18:21  INFO        min_d=0.20  d_used=0.20
+13:18:21  INFO        Building features [mode=unified] ...
+13:18:33  INFO        Features : 28 cols  (28 unified + 0 native)
+13:18:33  INFO        Computing sample weights ...
+13:19:29  INFO        Dropped 70 warm-up rows with NaN features (0.4%)
+13:19:29  INFO        Final frame : 16716 samples x 28 features
+13:19:30  INFO        Saved -> binance_btc_volatility_tick_bars__labeling_unified__20260520_111324.csv
+13:19:30  INFO      
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        STAGE 3 . MODELS  [binance_btc_volatility_tick_bars]  -- implement in mlfinlab/models/
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        Input  : 16716 samples x 36 cols
+13:19:30  INFO        Labels : {1.0: 8566, -1.0: 8150}
+13:19:30  INFO        Mode   : unified
+13:19:30  INFO        [ stub ]
+13:19:30  INFO      
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        STAGE 4 . PREDICTION  [binance_btc_volatility_tick_bars]  -- implement in mlfinlab/signals/
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        [ stub ]
+13:19:30  INFO      
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        STAGE 5 . BACKTEST  [binance_btc_volatility_tick_bars]  -- implement in mlfinlab/backtest/
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+13:19:30  INFO        Capital : $10000
+13:19:30  INFO        [ stub ]
+13:19:30  INFO      
+13:19:30  INFO      >>> binance_btc_volume_minute_bars  (2004 bars)  [information . minute]
+13:19:30  INFO      
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_volume_minute_bars]  [mode=unified]
+13:19:30  INFO      ==================================================================
+13:19:30  INFO        Computing volatility ...
+13:19:30  INFO        Information bars -> every bar is an event (no CUSUM) ...
+13:19:30  INFO        Events : 2004 (all bars)
+13:19:30  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+13:19:40  INFO        Labels : {1.0: 1081, -1.0: 915}  (n=1996)
+13:19:40  INFO        Finding minimum FFD d ...
+13:19:40  INFO        min_d=0.20  d_used=0.20
+13:19:40  INFO        Building features [mode=unified] ...
+13:19:41  INFO        Features : 28 cols  (28 unified + 0 native)
+13:19:41  INFO        Computing sample weights ...
+13:19:43  INFO        Dropped 70 warm-up rows with NaN features (3.5%)
+13:19:43  INFO        Final frame : 1926 samples x 28 features
+13:19:43  INFO        Saved -> binance_btc_volume_minute_bars__labeling_unified__20260520_111324.csv
+13:19:43  INFO      
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        STAGE 3 . MODELS  [binance_btc_volume_minute_bars]  -- implement in mlfinlab/models/
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        Input  : 1926 samples x 36 cols
+13:19:43  INFO        Labels : {1.0: 1045, -1.0: 881}
+13:19:43  INFO        Mode   : unified
+13:19:43  INFO        [ stub ]
+13:19:43  INFO      
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        STAGE 4 . PREDICTION  [binance_btc_volume_minute_bars]  -- implement in mlfinlab/signals/
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        [ stub ]
+13:19:43  INFO      
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        STAGE 5 . BACKTEST  [binance_btc_volume_minute_bars]  -- implement in mlfinlab/backtest/
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+13:19:43  INFO        Capital : $10000
+13:19:43  INFO        [ stub ]
+13:19:43  INFO      
+13:19:43  INFO      >>> binance_btc_volume_tick_bars  (3964 bars)  [information . tick]
+13:19:43  INFO      
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        STAGE 2 . LABELING + FEATURES  [binance_btc_volume_tick_bars]  [mode=unified]
+13:19:43  INFO      ==================================================================
+13:19:43  INFO        Computing volatility ...
+13:19:43  INFO        Information bars -> every bar is an event (no CUSUM) ...
+13:19:43  INFO        Events : 3964 (all bars)
+13:19:43  INFO        Triple-barrier  pt/sl=[2.0, 2.0]  days=3.0 ...
+13:20:11  INFO        Labels : {1.0: 2084, -1.0: 1872}  (n=3956)
+13:20:11  INFO        Finding minimum FFD d ...
+13:20:11  INFO        min_d=0.20  d_used=0.20
+13:20:11  INFO        Building features [mode=unified] ...
+13:20:16  INFO        Features : 28 cols  (28 unified + 0 native)
+13:20:16  INFO        Computing sample weights ...
+13:20:24  INFO        Dropped 70 warm-up rows with NaN features (1.8%)
+13:20:24  INFO        Final frame : 3886 samples x 28 features
+13:20:25  INFO        Saved -> binance_btc_volume_tick_bars__labeling_unified__20260520_111324.csv
+13:20:25  INFO      
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        STAGE 3 . MODELS  [binance_btc_volume_tick_bars]  -- implement in mlfinlab/models/
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        Input  : 3886 samples x 36 cols
+13:20:25  INFO        Labels : {1.0: 2046, -1.0: 1840}
+13:20:25  INFO        Mode   : unified
+13:20:25  INFO        [ stub ]
+13:20:25  INFO      
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        STAGE 4 . PREDICTION  [binance_btc_volume_tick_bars]  -- implement in mlfinlab/signals/
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        [ stub ]
+13:20:25  INFO      
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        STAGE 5 . BACKTEST  [binance_btc_volume_tick_bars]  -- implement in mlfinlab/backtest/
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        Fee     : 0.0400%  (0.0800% round-trip)
+13:20:25  INFO        Capital : $10000
+13:20:25  INFO        [ stub ]
+13:20:25  INFO      
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        STAGE 6 . CROSS-BAR REPORT  -- implement in mlfinlab/reporting/
+13:20:25  INFO      ==================================================================
+13:20:25  INFO      
+                                      bar_type    source    bar_class feature_mode  n_bars  n_events  min_d status
+dataset                                                                                                           
+binance_btc_12h                            12h  calendar     calendar      unified     731       371    0.2     ok
+binance_btc_1h                              1h  calendar     calendar      unified    8761      4886    0.2     ok
+binance_btc_4h                              4h  calendar     calendar      unified    2191      1157    0.2     ok
+binance_btc_6h                              6h  calendar     calendar      unified    1461       730    0.2     ok
+binance_btc_8h                              8h  calendar     calendar      unified    1096       556    0.2     ok
+binance_btc_dollar_minute_bars          dollar    minute  information      unified    6073      5999    0.2     ok
+binance_btc_dollar_tick_bars            dollar      tick  information      unified    4822      4745    0.2     ok
+binance_btc_hybrid_minute_bars          hybrid    minute  information      unified    5720      5645    0.2     ok
+binance_btc_hybrid_tick_bars            hybrid      tick  information      unified    8581      8504    0.2     ok
+binance_btc_range_minute_bars            range    minute  information      unified     897       819    0.2     ok
+binance_btc_range_tick_bars              range      tick  information      unified    5902      5826    0.2     ok
+binance_btc_renko_minute_bars            renko    minute  information      unified    1053       975    0.2     ok
+binance_btc_renko_tick_bars              renko      tick  information            ?   66408         0    NaN  ERROR
+binance_btc_volatility_minute_bars  volatility    minute  information      unified    1223      1144    0.2     ok
+binance_btc_volatility_tick_bars    volatility      tick  information      unified   16796     16716    0.2     ok
+binance_btc_volume_minute_bars          volume    minute  information      unified    2004      1926    0.2     ok
+binance_btc_volume_tick_bars            volume      tick  information      unified    3964      3886    0.2     ok
+13:20:25  INFO        Saved -> cross_bar_summary__20260520_111324.csv
+13:20:25  INFO        [ full metrics table -- implement in mlfinlab/reporting/ ]
+13:20:25  INFO      
+13:20:25  INFO      ==================================================================
+13:20:25  INFO        RUN SUMMARY
+13:20:25  INFO      ==================================================================
+13:20:25  INFO      Dataset                                               Bars   Events  min_d  Mode      Status
+13:20:25  INFO      --------------------------------------------------------------------------------------------
+13:20:25  INFO      binance_btc_12h                                        731      371   0.20  unified   ok
+13:20:25  INFO      binance_btc_1h                                        8761     4886   0.20  unified   ok
+13:20:25  INFO      binance_btc_4h                                        2191     1157   0.20  unified   ok
+13:20:25  INFO      binance_btc_6h                                        1461      730   0.20  unified   ok
+13:20:25  INFO      binance_btc_8h                                        1096      556   0.20  unified   ok
+13:20:25  INFO      binance_btc_dollar_minute_bars                        6073     5999   0.20  unified   ok
+13:20:25  INFO      binance_btc_dollar_tick_bars                          4822     4745   0.20  unified   ok
+13:20:25  INFO      binance_btc_hybrid_minute_bars                        5720     5645   0.20  unified   ok
+13:20:25  INFO      binance_btc_hybrid_tick_bars                          8581     8504   0.20  unified   ok
+13:20:25  INFO      binance_btc_range_minute_bars                          897      819   0.20  unified   ok
+13:20:25  INFO      binance_btc_range_tick_bars                           5902     5826   0.20  unified   ok
+13:20:25  INFO      binance_btc_renko_minute_bars                         1053      975   0.20  unified   ok
+13:20:25  INFO      binance_btc_renko_tick_bars                          66408        -      -  -         ERROR
+13:20:25  INFO      binance_btc_volatility_minute_bars                    1223     1144   0.20  unified   ok
+13:20:25  INFO      binance_btc_volatility_tick_bars                     16796    16716   0.20  unified   ok
+13:20:25  INFO      binance_btc_volume_minute_bars                        2004     1926   0.20  unified   ok
+13:20:25  INFO      binance_btc_volume_tick_bars                          3964     3886   0.20  unified   ok
+13:20:25  INFO      
+13:20:25  INFO      Outputs -> D:\Information_Bars_Research\mlfinlab\outputs
+13:20:25  INFO      Logs    -> D:\Information_Bars_Research\mlfinlab\logs
+13:20:25  INFO      Done.

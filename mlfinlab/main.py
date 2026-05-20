@@ -113,6 +113,11 @@ from mlfinlab.features.fractional_diff import frac_diff_ffd, find_min_d
 from mlfinlab.features.microstructural import bar_features
 from mlfinlab.features.technical import rsi, macd, bollinger_bands, atr, vwap, zscore
 from mlfinlab.features.sample_weights import get_sample_weights_time_decay
+from mlfinlab.models.learner import train_all                              # noqa: E402
+from mlfinlab.models.cv import WalkForwardCV                               # noqa: E402
+from mlfinlab.signals.generator import generate_signals                    # noqa: E402
+from mlfinlab.backtest.engine import run as backtest_run                   # noqa: E402
+from mlfinlab.reporting.report import build_report                         # noqa: E402
 
 # ============================================================================
 # CONFIG
@@ -147,7 +152,19 @@ CFG = {
     "embargo_pct"        : 0.01,
     "model_random_state" : 42,
 
-    # backtest (Stage 5 placeholder)
+    # walk-forward split
+    # initial_train_pct: fraction of data used for FIRST training fold.
+    # With 6 years (2020-2025) and 0.40: first 2.4 years train, rest test.
+    # Guarantees the very first fold has substantial training data.
+    # Never zero - 2020 data is always in training.
+    "initial_train_pct"  : 0.40,
+
+    # signals (Stage 4)
+    "confidence_threshold": 0.55,   # min probability to trade
+    "kelly_fraction"      : 0.25,   # quarter Kelly bet sizing
+    "max_bet_size"        : 0.20,   # max 20% of capital per trade
+
+    # backtest (Stage 5)
     "trading_fee_pct"    : 0.0004,
     "risk_free_rate"     : 0.0,
     "initial_capital"    : 10_000.0,
@@ -540,24 +557,34 @@ def stage_labeling_features(
     close = bars["close"]
 
     # -- 2a. Event sampling
-    # Calendar bars: CUSUM filter needed - bars are clock-based so many
-    #   bars capture nothing interesting. CUSUM samples only when price
-    #   deviation is large enough to be worth labeling.
-    # Information bars: every bar IS an event by construction - the bar
-    #   only formed because enough volume/dollars/volatility occurred.
-    #   CUSUM would double-filter and discard valid training samples.
+    # All bar types use every bar as an event.
+    #
+    # CUSUM filter is intentionally NOT applied to any bar type.
+    #
+    # Rationale for calendar bars:
+    #   CUSUM was previously applied to calendar bars to filter out
+    #   quiet, uninformative periods. However, removing it makes the
+    #   comparison fair: both calendar and information bars are evaluated
+    #   on ALL their bars. The triple-barrier label itself handles
+    #   uninformative periods by assigning label 0 (timeout) when
+    #   neither barrier is hit. Label-0 proportion is itself a research
+    #   finding that differs across bar types and must not be filtered away.
+    #
+    # Rationale for information bars:
+    #   Every bar formed due to a meaningful market event by construction.
+    #   CUSUM was always unnecessary here.
+    #
+    # If CUSUM is needed for a sensitivity analysis, re-enable by setting:
+    #   CFG["use_cusum"] = True
+    #   and wrapping the block below:
+    #   if CFG.get("use_cusum") and meta["bar_class"] == "calendar":
+    #       t_events = cusum_filter(close, threshold=vol * CFG["cusum_mult"])
     log.info("  Computing volatility ...")
     vol = daily_vol(close, lookback=CFG["vol_lookback"])
 
-    if meta["bar_class"] == "calendar":
-        log.info("  Calendar bars -> applying CUSUM filter ...")
-        t_events = cusum_filter(close, threshold=vol * CFG["cusum_mult"])
-        log.info("  Events sampled : %d / %d bars (%.0f%%)",
-                 len(t_events), len(close), 100*len(t_events)/len(close))
-    else:
-        log.info("  Information bars -> every bar is an event (no CUSUM) ...")
-        t_events = pd.DatetimeIndex(close.index)
-        log.info("  Events : %d (all bars)", len(t_events))
+    log.info("  Using all bars as events (no CUSUM filter) ...")
+    t_events = pd.DatetimeIndex(close.index)
+    log.info("  Events : %d (all bars)", len(t_events))
     if len(t_events) < CFG["min_events"]:
         log.warning("  Too few events -- skipping %s", name)
         return None
@@ -617,7 +644,11 @@ def stage_labeling_features(
 
     # -- 2f. Assemble
     X = features.reindex(labels.index)
-    result = pd.concat([X, labels[["ret", "bin"]], weights.rename("weight")],
+    # Store t1_touch (actual barrier exit time) aligned to label index.
+    # Used by Stage 5 backtest engine to determine trade exit prices.
+    t1_touch = events["t1_touch"].reindex(labels.index)
+    result = pd.concat([X, labels[["ret", "bin"]], weights.rename("weight"),
+                        t1_touch.rename("t1_touch")],
                        axis=1)
     result["bar_type"]     = meta.get("bar_type",  "unknown")
     result["source"]       = meta.get("source",    "unknown")
@@ -685,12 +716,38 @@ def stage_models(
     -------
     pd.DataFrame  y_true | y_pred | prob_m1 | prob_0 | prob_p1
     """
-    _sep(f"STAGE 3 . MODELS  [{name}]  -- implement in mlfinlab/models/")
-    log.info("  Input  : %d samples x %d cols", *ml_frame.shape)
-    log.info("  Labels : %s", ml_frame["bin"].value_counts().to_dict())
-    log.info("  Mode   : %s", ml_frame["feature_mode"].iloc[0])
-    log.info("  [ stub ]")
-    return None
+    _sep(f"STAGE 3 . MODELS  [{name}]")
+
+    results = train_all(
+        name              = name,
+        ml_frame          = ml_frame,
+        meta              = meta,
+        random_state      = CFG["model_random_state"],
+        n_splits          = CFG["cv_n_splits"],
+        embargo_pct       = CFG["embargo_pct"],
+        initial_train_pct = CFG["initial_train_pct"],
+    )
+
+    if not results or "summary" not in results:
+        log.warning("  No model results produced for %s", name)
+        return None
+
+    # Save predictions and feature importance per classifier
+    for clf_name, res in results.items():
+        if clf_name == "summary" or not isinstance(res, dict):
+            continue
+        preds = res.get("predictions")
+        if preds is not None and not preds.empty:
+            _save(preds, f"{name}__{clf_name}", "predictions", no_save)
+        fi = res.get("feature_importance")
+        if fi is not None and not fi.isna().all():
+            fi_df = fi.reset_index()
+            fi_df.columns = ["feature", "mdi_importance"]
+            _save(fi_df, f"{name}__{clf_name}", "feature_importance", no_save)
+
+    _save(results["summary"], name, "cv_summary", no_save)
+    log.info("  Stage 3 complete for %s", name)
+    return results
 
 
 # ============================================================================
@@ -721,9 +778,46 @@ def stage_predict(
     -------
     pd.DataFrame  signal (-1/0/+1) | bet_size | confidence
     """
-    _sep(f"STAGE 4 . PREDICTION  [{name}]  -- implement in mlfinlab/signals/")
-    log.info("  [ stub ]")
-    return None
+    _sep(f"STAGE 4 . PREDICTION  [{name}]")
+
+    if model_output is None or "summary" not in model_output:
+        log.warning("  No model output available for %s", name)
+        return None
+
+    # Collect stitched predictions from best classifier by mean F1
+    summary = model_output["summary"]
+    if summary.empty:
+        log.warning("  Empty model summary for %s", name)
+        return None
+
+    # Generate signals for EVERY classifier so backtest can report per-classifier.
+    # The paper needs per-model metrics, not just the best model's metrics.
+    all_signals = {}
+    for clf_name, res in model_output.items():
+        if clf_name == "summary" or not isinstance(res, dict):
+            continue
+        preds = res.get("predictions")
+        if preds is None or preds.empty:
+            continue
+        sigs = generate_signals(
+            predictions          = preds,
+            confidence_threshold = CFG["confidence_threshold"],
+            kelly_fraction       = CFG["kelly_fraction"],
+            max_bet_size         = CFG["max_bet_size"],
+        )
+        all_signals[clf_name] = sigs
+        _save(sigs, f"{name}__{clf_name}", "signals", no_save)
+        log.info("  [%s] signals: buy=%d sell=%d hold=%d",
+                 clf_name,
+                 (sigs["signal"]==1).sum(),
+                 (sigs["signal"]==-1).sum(),
+                 (sigs["signal"]==0).sum())
+
+    if not all_signals:
+        log.warning("  No signals generated for %s", name)
+        return None
+
+    return all_signals
 
 
 # ============================================================================
@@ -735,6 +829,7 @@ def stage_backtest(
     bars     : pd.DataFrame,
     signals  : Optional[pd.DataFrame],
     meta     : dict,
+    ml_frame : Optional[pd.DataFrame] = None,
     no_save  : bool = False,
 ) -> Optional[dict]:
     """Simulate strategy P&L and compute performance metrics.
@@ -753,13 +848,50 @@ def stage_backtest(
     -------
     dict  {metric: value, "bar_type": ..., "source": ..., "feature_mode": ...}
     """
-    _sep(f"STAGE 5 . BACKTEST  [{name}]  -- implement in mlfinlab/backtest/")
-    log.info("  Fee     : %.4f%%  (%.4f%% round-trip)",
-             CFG["trading_fee_pct"] * 100,
-             CFG["trading_fee_pct"] * 200)
-    log.info("  Capital : $%.0f", CFG["initial_capital"])
-    log.info("  [ stub ]")
-    return None
+    _sep(f"STAGE 5 . BACKTEST  [{name}]")
+    log.info("  Fee : %.4f%% per side  Capital : $%.0f",
+             CFG["trading_fee_pct"] * 100, CFG["initial_capital"])
+
+    if signals is None or (isinstance(signals, dict) and not signals):
+        log.warning("  No signals for %s", name)
+        return None
+
+    from mlfinlab.backtest.engine import run as _bt_run
+    ml_f = ml_frame if ml_frame is not None else pd.DataFrame()
+
+    # signals is a dict {classifier_name -> signals_df}
+    # Run backtest per classifier and collect all metrics
+    if isinstance(signals, dict):
+        all_metrics = []
+        for clf_name, sigs in signals.items():
+            log.info("  Backtesting [%s] ...", clf_name)
+            m = _bt_run(
+                signals     = sigs,
+                bars        = bars,
+                ml_frame    = ml_f,
+                meta        = meta,
+                fee_pct     = CFG["trading_fee_pct"],
+                risk_free   = CFG["risk_free_rate"],
+                initial_cap = CFG["initial_capital"],
+            )
+            m["classifier"] = clf_name
+            all_metrics.append(m)
+        metrics_list = all_metrics
+        _save(pd.DataFrame(all_metrics), name, "backtest_metrics", no_save)
+        return all_metrics
+    else:
+        # single signals DataFrame (backward compat)
+        metrics = _bt_run(
+            signals     = signals,
+            bars        = bars,
+            ml_frame    = ml_f,
+            meta        = meta,
+            fee_pct     = CFG["trading_fee_pct"],
+            risk_free   = CFG["risk_free_rate"],
+            initial_cap = CFG["initial_capital"],
+        )
+        _save(pd.DataFrame([metrics]), name, "backtest_metrics", no_save)
+        return [metrics]
 
 
 # ============================================================================
@@ -787,36 +919,45 @@ def stage_report(
           summary_table.tex   LaTeX table for paper
           ml_comparison.pdf   grouped bar-chart figure
     """
-    _sep("STAGE 6 . CROSS-BAR REPORT  -- implement in mlfinlab/reporting/")
+    _sep("STAGE 6 . CROSS-BAR REPORT")
 
     if not all_results:
         log.info("  No results to report.")
         return
 
-    rows = []
+    # Collect all backtest metrics dicts
+    all_metrics = []
     for name, res in all_results.items():
-        m = res.get("meta", {})
-        rows.append({
-            "dataset"      : name,
-            "bar_type"     : m.get("bar_type",  "?"),
-            "source"       : m.get("source",    "?"),
-            "bar_class"    : m.get("bar_class", "?"),
-            "feature_mode" : res.get("feature_mode", "?"),
-            "n_bars"       : res.get("bars",    0),
-            "n_events"     : res.get("events",  0),
-            "min_d"        : res.get("min_d",   float("nan")),
-            "status"       : res.get("status",  "ok"),
-        })
+        bt = res.get("backtest_metrics")
+        if isinstance(bt, list):
+            all_metrics.extend(bt)
+        elif isinstance(bt, dict) and bt:
+            all_metrics.append(bt)
 
-    df = pd.DataFrame(rows).set_index("dataset")
-    log.info("\n%s", df.to_string())
+    if not all_metrics:
+        log.info("  No backtest metrics collected yet.")
+        # Still print labeling summary
+        rows = []
+        for name, res in all_results.items():
+            m = res.get("meta", {})
+            rows.append({
+                "dataset": name, "bar_type": m.get("bar_type","?"),
+                "source": m.get("source","?"), "bar_class": m.get("bar_class","?"),
+                "n_events": res.get("events",0), "min_d": res.get("min_d",float("nan")),
+                "status": res.get("status","ok"),
+            })
+        df = pd.DataFrame(rows)
+        log.info("\n%s", df.to_string(index=False))
+        if not no_save:
+            df.to_csv(OUTPUT_DIR / f"cross_bar_summary__{_ts}.csv", index=False)
+        return
 
-    if not no_save:
-        p = OUTPUT_DIR / f"cross_bar_summary__{_ts}.csv"
-        df.to_csv(p)
-        log.info("  Saved -> %s", p.name)
-
-    log.info("  [ full metrics table -- implement in mlfinlab/reporting/ ]")
+    build_report(
+        all_metrics = all_metrics,
+        run_results = all_results,
+        output_dir  = OUTPUT_DIR,
+        timestamp   = _ts,
+    )
 
 
 # ============================================================================
@@ -897,7 +1038,7 @@ def main() -> None:
 
     if args.list_stages:
         print("\nRegistered pipeline stages:")
-        active = {"data", "labeling"}
+        active = {"data", "labeling", "models", "predict", "backtest", "report"}
         for i, (key, label, _) in enumerate(STAGES, 1):
             s = "active" if key in active else "placeholder"
             print(f"  {i}. {key:<10}  {label:<35}  [{s}]")
@@ -965,9 +1106,18 @@ def main() -> None:
             # Stage 5
             if args.stage in (None, "backtest"):
                 bt = stage_backtest(name, bars, signals, meta,
+                                    ml_frame=ml_frame,
                                     no_save=args.no_save)
                 if bt:
-                    run_results[name].update(bt)
+                    run_results[name]["backtest_metrics"] = bt
+                    # Store summary metrics from first classifier for run summary
+                    first = bt[0] if isinstance(bt, list) and bt else bt
+                    if isinstance(first, dict):
+                        run_results[name].update({
+                            k: v for k,v in first.items()
+                            if k not in ("bar_type","source","bar_class",
+                                         "feature_mode","classifier")
+                        })
 
         except Exception:
             run_results[name]["status"] = "ERROR"

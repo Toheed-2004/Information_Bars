@@ -113,12 +113,9 @@ def bar_features(
 
     # --- microstructure
     feat["cs_spread"] = corwin_schultz_spread(df)
-    # Amihud illiquidity: |ret| / dollar_volume.
-    # Raw value is ~1e-12 for BTC because dollar volumes are huge.
-    # Multiply by 1e9 to bring to human-readable scale (~1e-3).
-    # This is purely cosmetic rescaling; relative ordering across bar
-    # types is unchanged and the feature is still meaningful.
-    feat["amihud"] = amihud_lambda(df["close"], df["volume"]) * 1e9
+    # Amihud illiquidity removed: for BTC dollar volumes are so large
+    # (~$8.9B per 12h bar) that |ret|/dollar_vol is negligible (~1e-12)
+    # and carries no discriminative signal across bar types.
 
     # --- autocorrelation of returns
     feat["autocorr_10"] = log_ret.rolling(20).apply(

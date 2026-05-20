@@ -51,8 +51,9 @@ class TestBarFeatures:
     def test_expected_columns(self, bars):
         feat = bar_features(bars)
         for col in ["hl_spread", "co_return", "body_ratio", "log_volume",
-                    "rsi_14", "cs_spread", "amihud"]:
+                    "rsi_14", "cs_spread"]:
             assert col in feat.columns, f"Missing: {col}"
+        assert "amihud" not in feat.columns, "amihud should be removed"
 
     def test_hl_spread_positive(self, bars):
         feat = bar_features(bars)
