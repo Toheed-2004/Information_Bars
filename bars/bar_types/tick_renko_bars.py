@@ -368,7 +368,7 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     log_ret    = _tick_log_returns(prices_f64)
     if len(log_ret) < 100:
         logger.warning("  Insufficient log-returns — using defaults")
-        del cal_p, cal_q, cal_ts_ms; gc.collect()
+        del cal_p, cal_q, cal_ts_ms
         return bar_processor._get_default_params()
 
     # ── information multiplier ────────────────────────────────────────────────
@@ -428,7 +428,7 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     # seed renko_reference from last calibration tick — identical to before
     bar_processor.renko_reference = float(prices_f64[-1]) if len(prices_f64) > 0 else None
 
-    del cal_p, cal_q, cal_ts_ms; gc.collect()
+    del cal_p, cal_q, cal_ts_ms
 
     logger.info(
         "  Renko calibration done — brick_size=%.6f (%.4f%%)  "

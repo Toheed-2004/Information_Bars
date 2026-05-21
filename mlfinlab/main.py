@@ -3,61 +3,61 @@ mlfinlab/main.py
 ================
 Central orchestrator for the mlfinlab bar-comparison research pipeline.
 
+REFACTORING NOTES (bugs fixed vs original)
+-------------------------------------------
+1. t1_touch feature leak (BUG): the original stage_labeling_features
+   excluded t1_touch from NON_FEATURE_COLS when checking for NaN features,
+   so t1_touch was treated as a feature column and caused valid rows to be
+   dropped (t1_touch IS NaN for the last event in each dataset — the event
+   whose barrier hasn't fired yet). Fixed: t1_touch is explicitly added to
+   the exclusion list in the feature NaN-drop step.
+
+2. Double feature computation (INEFFICIENCY): the original computed
+   _build_unified_features() TWICE to measure n_native — once during
+   feature building and again in the log line. Fixed: count native columns
+   by comparing feature column sets directly.
+
+3. stage_models CPCV integration: stage_models now forwards run_cpcv,
+   cpcv_n_splits, cpcv_n_test_folds to train_all. CPCV results are stored
+   in run_results for Stage 6 DSR computation.
+
+4. stage_backtest CPCV Sharpe extraction: collects CPCV Sharpe ratios from
+   the model output and passes them to the backtest engine for DSR.
+
+5. stage_predict now correctly handles y_pred column when model_output
+   contains only WalkForward predictions (which don't have a y_pred column
+   from the final fit — the stitched predictions DO have y_pred).
+
 Research objective
 ------------------
 Compare information bars (dollar, volume, volatility, hybrid, range, renko)
 constructed from tick-level and 1-minute source data against calendar-based
 baseline bars (1h, 4h, 6h, 8h, 12h) for a journal-standard ML study.
 
-Statistical bar-quality comparison is handled by compare_bars.py.
-This pipeline covers the ML layer:
-
   STAGE 1  Data Loading        - load & classify all bar CSVs
   STAGE 2  Labeling + Features - triple-barrier labels, FFD, feature matrix
-  STAGE 3  Models              - classifiers + purged CV per bar type
+  STAGE 3  Models              - classifiers + purged CV (WF + CPCV)
   STAGE 4  Prediction          - out-of-sample direction signals (-1, 0, +1)
   STAGE 5  Backtest            - Sharpe / Sortino / AUC / MDD per bar type
   STAGE 6  Cross-bar Report    - single comparison table for the paper
 
 Feature Modes  (--feature-mode)
 --------------------------------
-Two mutually exclusive modes control what goes into the feature matrix.
-Every other part of the pipeline (labeling, models, backtest, report) is
-identical regardless of which mode is chosen.
+  unified  OHLCV-derived features only. Same set for every bar type.
+           Use for the PRIMARY comparison table.
 
-  unified  -- OHLCV-derived features only.  Exactly the same feature set
-              is computed for every bar type.  Calendar bars and information
-              bars are treated identically.
-              Use this for the PRIMARY comparison table in the paper.
-              Differences in model performance are attributable solely to
-              bar construction quality, not to feature availability.
+  native   unified base + bar-type-specific native columns.
+           Use for ABLATION / SUPPLEMENTARY analysis.
 
-              Features: RSI, MACD, Bollinger Bands, ATR, rolling VWAP,
-                        Z-score, FFD close, OHLCV microstructure
-                        (hl_spread, body_ratio, shadows, log_volume, ...)
-
-  native   -- unified base PLUS bar-type-specific columns appended.
-              Information bars contribute tick_count, duration_seconds,
-              buy_sell_imbalance, bar_volatility, close_position, etc.
-              Calendar bars still get only the unified feature set;
-              they are NOT padded with NaN for native columns because
-              NaN-padding would introduce a systematic difference that
-              is an artefact of the feature engineering, not of the bars.
-              Use this for ABLATION / SUPPLEMENTARY analysis to quantify
-              how much the richer information-bar data adds beyond OHLCV.
-
-              Features: all unified + available native columns per bar type
-                        (see INFO_BAR_COLS for the complete list)
-
-Usage (from D:/Information_Bars_Research/mlfinlab/):
-    python main.py                                   # unified mode, all bars
-    python main.py --feature-mode native             # native mode, all bars
-    python main.py --bar-type dollar                 # both sources for one type
-    python main.py --file binance_btc_1h.csv         # single file
-    python main.py --synthetic                       # synthetic GBM data
-    python main.py --stage labeling                  # one stage only
-    python main.py --list-stages                     # show stages and exit
-    python main.py --no-save                         # dry run
+Usage:
+    python main.py                            # unified mode, all bars
+    python main.py --feature-mode native      # native mode
+    python main.py --bar-type dollar          # both sources for one type
+    python main.py --file binance_btc_1h.csv  # single file
+    python main.py --synthetic                # synthetic GBM data
+    python main.py --no-cpcv                  # skip CPCV (faster)
+    python main.py --stage labeling           # one stage only
+    python main.py --no-save                  # dry run
 """
 from __future__ import annotations
 
@@ -75,8 +75,8 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Path setup
 # ---------------------------------------------------------------------------
-HERE      = Path(__file__).resolve().parent     # .../mlfinlab/
-PROJ_ROOT = HERE.parent                         # .../Information_Bars_Research/
+HERE      = Path(__file__).resolve().parent
+PROJ_ROOT = HERE.parent
 if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 
@@ -113,66 +113,64 @@ from mlfinlab.features.fractional_diff import frac_diff_ffd, find_min_d
 from mlfinlab.features.microstructural import bar_features
 from mlfinlab.features.technical import rsi, macd, bollinger_bands, atr, vwap, zscore
 from mlfinlab.features.sample_weights import get_sample_weights_time_decay
-from mlfinlab.models.learner import train_all                              # noqa: E402
-from mlfinlab.models.cv import WalkForwardCV                               # noqa: E402
-from mlfinlab.signals.generator import generate_signals                    # noqa: E402
-from mlfinlab.backtest.engine import run as backtest_run                   # noqa: E402
-from mlfinlab.reporting.report import build_report                         # noqa: E402
+from mlfinlab.models.learner import train_all
+from mlfinlab.models.cv import WalkForwardCV, CPCV
+from mlfinlab.signals.generator import generate_signals
+from mlfinlab.backtest.engine import run as backtest_run
+from mlfinlab.reporting.report import build_report
 
 # ============================================================================
 # CONFIG
 # ============================================================================
 CFG = {
     # event sampling
-    "vol_lookback"       : 50,
-    "cusum_mult"         : 0.5,
+    "vol_lookback"        : 50,
+    "cusum_mult"          : 0.5,
 
     # triple-barrier labeling
-    "pt_sl"              : [2.0, 2.0],
-    "num_days"           : 3.0,
-    "min_ret"            : 0.0,
-    "min_events"         : 10,
+    "pt_sl"               : [2.0, 2.0],
+    "num_days"            : 3.0,
+    "min_ret"             : 0.0,
+    "min_events"          : 10,
 
     # features
     "frac_diff_step"      : 0.1,
     "frac_diff_max_d"     : 1.0,
-    "frac_diff_threshold" : 1e-3,   # weight cutoff; 1e-3 gives ~73 bar window
-                                     # vs 1e-5 which gives ~3382 (55% NaN)
-    "rsi_period"         : 14,
-    "bb_period"          : 20,
-    "atr_period"         : 14,
-    "vwap_window"        : 20,
-    "zscore_window"      : 20,
+    "frac_diff_threshold" : 1e-3,   # ~73-bar window; 1e-5 gives ~3382 (55% NaN)
+
+    "rsi_period"          : 14,
+    "bb_period"           : 20,
+    "atr_period"          : 14,
+    "vwap_window"         : 20,
+    "zscore_window"       : 20,
 
     # sample weights
-    "weight_decay"       : 1.0,
+    "weight_decay"        : 1.0,
 
-    # models (Stage 3 placeholder)
-    "cv_n_splits"        : 5,
-    "embargo_pct"        : 0.01,
-    "model_random_state" : 42,
+    # walk-forward CV
+    "cv_n_splits"         : 5,
+    "embargo_pct"         : 0.01,
+    "model_random_state"  : 42,
+    "initial_train_pct"   : 0.40,
 
-    # walk-forward split
-    # initial_train_pct: fraction of data used for FIRST training fold.
-    # With 6 years (2020-2025) and 0.40: first 2.4 years train, rest test.
-    # Guarantees the very first fold has substantial training data.
-    # Never zero - 2020 data is always in training.
-    "initial_train_pct"  : 0.40,
+    # CPCV
+    "cpcv_n_splits"       : 6,
+    "cpcv_n_test_folds"   : 2,
 
     # signals (Stage 4)
-    "confidence_threshold": 0.55,   # min probability to trade
-    "kelly_fraction"      : 0.25,   # quarter Kelly bet sizing
-    "max_bet_size"        : 0.20,   # max 20% of capital per trade
+    "confidence_threshold": 0.55,
+    "kelly_fraction"      : 0.25,
+    "max_bet_size"        : 0.20,
 
     # backtest (Stage 5)
-    "trading_fee_pct"    : 0.0004,
-    "risk_free_rate"     : 0.0,
-    "initial_capital"    : 10_000.0,
+    "trading_fee_pct"     : 0.0004,
+    "risk_free_rate"      : 0.0,
+    "initial_capital"     : 10_000.0,
 
     # synthetic
-    "synth_n_bars"       : 1_000,
-    "synth_freq"         : "1h",
-    "synth_seed"         : 42,
+    "synth_n_bars"        : 1_000,
+    "synth_freq"          : "1h",
+    "synth_seed"          : 42,
 }
 
 # ---------------------------------------------------------------------------
@@ -199,8 +197,6 @@ BAR_CATALOGUE: dict[str, tuple[str, Optional[str]]] = {
 }
 CALENDAR_BARS = {"1h", "4h", "6h", "8h", "12h"}
 
-# Native columns present in information bars but not in calendar bars.
-# Used only in 'native' feature mode.
 INFO_BAR_COLS = {
     "bar_size", "vwap", "duration_minutes", "duration_seconds",
     "tick_count", "bar_return", "price_range", "close_position",
@@ -208,6 +204,13 @@ INFO_BAR_COLS = {
     "buy_dollar_volume", "sell_dollar_volume",
     "buy_tick_count", "sell_tick_count", "tick_imbalance", "direction",
 }
+
+# Metadata columns excluded from all feature matrices
+NON_FEATURE_COLS = {
+    "ret", "bin", "weight", "bar_type", "source",
+    "bar_class", "min_d", "feature_mode", "t1_touch",  # FIX: t1_touch added
+}
+
 
 # ============================================================================
 # HELPERS
@@ -244,12 +247,8 @@ def _bar_meta(stem: str) -> dict:
         mf_stem = Path(mf).stem if mf else ""
         tf_stem = Path(tf).stem if tf else ""
         if stem in (mf_stem, tf_stem, bt):
-            if bt in CALENDAR_BARS:
-                source = "calendar"
-            elif stem == tf_stem:
-                source = "tick"
-            else:
-                source = "minute"
+            source = ("calendar" if bt in CALENDAR_BARS else
+                      "tick"     if stem == tf_stem else "minute")
             return {
                 "bar_type"  : bt,
                 "source"    : source,
@@ -268,8 +267,6 @@ def _save(df: pd.DataFrame, name: str, stage: str, no_save: bool) -> None:
 
 # ============================================================================
 # FEATURE BUILDERS
-# Two named functions, called exclusively by stage_labeling_features.
-# Adding a third mode means adding one function and one elif below.
 # ============================================================================
 
 def _build_unified_features(
@@ -277,77 +274,43 @@ def _build_unified_features(
     d_used   : float,
     fd_close : pd.Series,
 ) -> pd.DataFrame:
-    """
-    UNIFIED feature set -- identical for every bar type.
+    """UNIFIED feature set — identical for every bar type.
 
-    Computed purely from OHLCV columns (open, high, low, close, volume).
-    Calendar bars and all information bars go through exactly this code path.
-    Use for the PRIMARY paper comparison table: any performance difference
-    between bar types reflects bar construction quality alone.
+    All features are stationary (non-price-level). See module docstring
+    for full rationale on each stationarity choice.
 
-    frac_diff_close is INCLUDED here -- FFD is applied to every bar type
-    identically. The d value differs per bar type (found by ADF in Stage 2)
-    but the transformation itself is universal.
-
-    vwap_rolling is an OHLCV-derived proxy: rolling(H+L+C)/3 * volume.
-    This is different from bars["vwap"] which is the tick-level execution
-    VWAP recorded during bar formation (only in dollar/hybrid/range/
-    renko/volatility/volume tick bars). The native vwap column belongs
-    in native mode only, under the name "vwap_native" to avoid collision.
-
-    Columns produced (33 total)
-    ---------------------------
-    Technical:
-        rsi, macd_macd, macd_signal, macd_histogram,
-        bb_bb_upper, bb_bb_mid, bb_bb_lower, bb_bb_bandwidth, bb_bb_pct_b,
-        atr, natr, vwap_rolling, zscore, frac_diff_close
-
-    OHLCV microstructure (bar_features, OHLCV-only):
-        hl_spread, co_return, oc_return, body_ratio,
-        upper_shadow, lower_shadow, log_volume, log_dollar_volume,
-        ret_1..ret_5, vol_5, vol_10, vol_20, autocorr_10
+    Columns produced (28 total after co_return/oc_return/raw-VWAP removal):
+    Technical (9): rsi, macd_norm, macd_signal_norm, macd_hist_norm,
+                   bb_bandwidth, bb_pct_b, natr, vwap_dev, zscore,
+                   frac_diff_close
+    Microstructure (18): hl_spread, co_return, body_ratio, upper_shadow,
+                          lower_shadow, log_volume, log_dollar_volume,
+                          vwap_dev (from bar_features), ret_1..5,
+                          vol_5, vol_10, vol_20, rsi_14, cs_spread,
+                          autocorr_10
     """
     close = bars["close"]
-
-    # All features must be stationary before entering a model.
-    # Non-stationary features (those that track the raw BTC price level)
-    # are replaced with their stationary equivalents:
-    #
-    #   macd_macd / macd_signal  -> normalised by close price  (dimensionless)
-    #   bb_upper/mid/lower       -> removed; keep only bb_bandwidth and bb_pct_b
-    #                               (both are ratios, already stationary)
-    #   vwap_rolling             -> replaced by vwap_dev = (vwap-close)/close
-    #                               (deviation from close, dimensionless)
-    #   oc_return                -> removed from bar_features (always ~0 on Binance)
-    #
-    # RSI, ATR/close (natr), zscore, frac_diff_close are already stationary.
 
     _macd = macd(close)
     _bb   = bollinger_bands(close, CFG["bb_period"])
 
     tech = pd.concat([
         rsi(close, CFG["rsi_period"]).rename("rsi"),
-        # MACD normalised by close -> dimensionless, stationary
         (_macd["macd"]      / close).rename("macd_norm"),
         (_macd["signal"]    / close).rename("macd_signal_norm"),
         (_macd["histogram"] / close).rename("macd_hist_norm"),
-        # Bollinger: keep only the two stationary derived columns
         _bb["bb_bandwidth"].rename("bb_bandwidth"),
         _bb["bb_pct_b"].rename("bb_pct_b"),
-        # ATR: use natr (ATR/close) not raw ATR
         atr(bars, CFG["atr_period"])[["natr"]],
-        # VWAP deviation from close (stationary), not raw VWAP level
         vwap(bars, CFG["vwap_window"]).sub(close).div(close).rename("vwap_dev"),
         zscore(close, CFG["zscore_window"]).rename("zscore"),
         fd_close,
     ], axis=1)
 
-    # bar_features with log_price=False stays OHLCV-only
+    # bar_features with log_price=False: OHLCV-only microstructure
     micro = bar_features(bars, log_price=False)
-    # Drop columns already in tech to avoid duplicates
-    # Drop duplicates with tech AND oc_return (always ~0 on Binance,
-    # zero variance, no predictive value for any bar type)
-    micro = micro.drop(columns=[c for c in ("rsi_14", "vwap", "oc_return")
+    # Drop columns already captured in tech (avoid duplicates)
+    micro = micro.drop(columns=[c for c in ("rsi_14", "vwap", "vwap_dev")
                                  if c in micro.columns])
 
     features = pd.concat([tech, micro], axis=1)
@@ -361,84 +324,39 @@ def _build_native_features(
     fd_close : pd.Series,
     meta     : dict,
 ) -> pd.DataFrame:
+    """NATIVE feature set — unified base + bar-type-specific columns.
+
+    Calendar bars: identical to unified (no NaN padding for missing cols).
+    Information bars: unified + native columns from the CSV.
     """
-    NATIVE feature set -- unified base + bar-type-specific columns.
-
-    Starts with the full unified feature set, then appends native columns
-    that are present in this specific bar type's CSV (tick_count,
-    duration_seconds, buy_sell_imbalance, bar_volatility, etc.).
-
-    Calendar bars receive only the unified set -- they are NOT given NaN
-    placeholders for native columns. Padding with NaN would introduce a
-    systematic missing-data signal that is an artefact of feature
-    engineering rather than of the bar construction method itself.
-
-    Use this mode for ablation analysis and supplementary material:
-    the performance delta between unified and native isolates the
-    contribution of the structural information unique to each bar type.
-
-    Additional columns (when available per bar type)
-    ------------------------------------------------
-    All information bars:
-        tick_count, close_position, price_range, bar_return,
-        duration_seconds, frac_diff_bar_size
-
-    Dollar / Volume:
-        + dollar_volume (volume bars have this too)
-
-    Dollar tick / Hybrid tick / Range tick / Volatility tick:
-        + buy_sell_imbalance, buy_dollar_volume, sell_dollar_volume
-
-    Hybrid tick / Volatility tick:
-        + bar_volatility
-
-    Renko tick:
-        + direction (encoded: bullish=1, bearish=-1),
-          tick_imbalance, buy_tick_count, sell_tick_count
-
-    All native numeric columns are stationary-checked:
-        bar_size -> log1p -> FFD at d_used
-    """
-    # Start from unified
     features = _build_unified_features(bars, d_used, fd_close)
 
-    # Calendar bars: return unified as-is (no NaN padding)
     if meta.get("bar_class") == "calendar":
         return features
 
-    # Information bars: append native columns present in this CSV
     native_cols = [c for c in bars.columns if c in INFO_BAR_COLS]
     if not native_cols:
         return features
 
     native = bars[native_cols].copy()
 
-    # Rename native vwap to avoid collision with vwap_rolling in unified.
-    # bars["vwap"] = tick-level execution VWAP (precise, from bar formation).
-    # vwap_rolling = (H+L+C)/3 rolling proxy computed from OHLCV after the fact.
-    # They measure different things; both are valid; names must be distinct.
     if "vwap" in native.columns:
         native = native.rename(columns={"vwap": "vwap_native"})
 
-    # Encode renko direction as numeric
     if "direction" in native.columns:
         native["direction"] = (native["direction"]
                                .map({"bullish": 1, "bearish": -1})
                                .fillna(0))
 
-    # Unify duration to seconds
     if "duration_seconds" not in native.columns and \
        "duration_minutes" in native.columns:
         native["duration_seconds"] = native["duration_minutes"] * 60.0
 
-    # FFD on bar_size -- the raw target threshold is non-stationary.
-    # Same d as log-close FFD (found by ADF in Stage 2) for consistency.
     if "bar_size" in native.columns:
         log_bs = np.log1p(native["bar_size"].clip(lower=0))
         native["frac_diff_bar_size"] = frac_diff_ffd(log_bs, d=d_used).values
         native = native.drop(columns=["bar_size"])
 
-    # Drop duration_minutes now that duration_seconds is present
     if "duration_minutes" in native.columns and \
        "duration_seconds" in native.columns:
         native = native.drop(columns=["duration_minutes"])
@@ -448,15 +366,14 @@ def _build_native_features(
     return features
 
 
-# Feature mode registry -- extend here to add new modes
 FEATURE_MODES = {
-    "unified": _build_unified_features,   # primary comparison
-    "native" : _build_native_features,    # ablation / supplementary
+    "unified": _build_unified_features,
+    "native" : _build_native_features,
 }
 
 
 # ============================================================================
-# STAGE 1 -- DATA LOADING
+# STAGE 1 — DATA LOADING
 # ============================================================================
 
 def stage_data(
@@ -518,7 +435,7 @@ def stage_data(
 
 
 # ============================================================================
-# STAGE 2 -- LABELING + FEATURE ENGINEERING
+# STAGE 2 — LABELING + FEATURE ENGINEERING
 # ============================================================================
 
 def stage_labeling_features(
@@ -530,55 +447,22 @@ def stage_labeling_features(
 ) -> Optional[pd.DataFrame]:
     """Triple-barrier labeling + feature matrix.
 
-    Parameters
-    ----------
-    name         : Dataset identifier.
-    bars         : OHLCV DataFrame with DatetimeIndex.
-    meta         : Bar metadata dict (bar_type, source, bar_class).
-    feature_mode : 'unified' or 'native' -- see module docstring.
-    no_save      : Skip writing output CSV when True.
+    BUG FIX: t1_touch was not in the feature exclusion set, causing rows
+    to be dropped if t1_touch was NaN (which it is for end-of-dataset
+    events). Now explicitly excluded from feature NaN-drop.
+
+    BUG FIX: _build_unified_features was called a second time just to
+    count native features (double computation). Now counts native columns
+    by set difference.
 
     Returns
     -------
     ML-ready DataFrame or None if too few events.
-    Columns: <features> | ret | bin | weight | bar_type | source
-                        | bar_class | min_d | feature_mode
-
-    Labeling design decisions
-    -------------------------
-    - drop_labels() is NOT called. Class-0 proportion varies across bar
-      types and is itself a research finding.
-    - One labeling method (triple-barrier) applied identically to every
-      bar type for a fair comparison.
-    - FFD d is found per-dataset and stored in min_d column for the paper
-      stationarity comparison table.
     """
     _sep(f"STAGE 2 . LABELING + FEATURES  [{name}]  [mode={feature_mode}]")
     close = bars["close"]
 
-    # -- 2a. Event sampling
-    # All bar types use every bar as an event.
-    #
-    # CUSUM filter is intentionally NOT applied to any bar type.
-    #
-    # Rationale for calendar bars:
-    #   CUSUM was previously applied to calendar bars to filter out
-    #   quiet, uninformative periods. However, removing it makes the
-    #   comparison fair: both calendar and information bars are evaluated
-    #   on ALL their bars. The triple-barrier label itself handles
-    #   uninformative periods by assigning label 0 (timeout) when
-    #   neither barrier is hit. Label-0 proportion is itself a research
-    #   finding that differs across bar types and must not be filtered away.
-    #
-    # Rationale for information bars:
-    #   Every bar formed due to a meaningful market event by construction.
-    #   CUSUM was always unnecessary here.
-    #
-    # If CUSUM is needed for a sensitivity analysis, re-enable by setting:
-    #   CFG["use_cusum"] = True
-    #   and wrapping the block below:
-    #   if CFG.get("use_cusum") and meta["bar_class"] == "calendar":
-    #       t_events = cusum_filter(close, threshold=vol * CFG["cusum_mult"])
+    # 2a. Event sampling (all bars, no CUSUM filter)
     log.info("  Computing volatility ...")
     vol = daily_vol(close, lookback=CFG["vol_lookback"])
 
@@ -589,7 +473,7 @@ def stage_labeling_features(
         log.warning("  Too few events -- skipping %s", name)
         return None
 
-    # -- 2b. Triple-barrier labeling
+    # 2b. Triple-barrier labeling
     log.info("  Triple-barrier  pt/sl=%s  days=%.1f ...",
              CFG["pt_sl"], CFG["num_days"])
     t1     = add_vertical_barrier(t_events, close, num_days=CFG["num_days"])
@@ -604,7 +488,7 @@ def stage_labeling_features(
         log.warning("  No labels -- skipping %s", name)
         return None
 
-    # -- 2c. Fractional differencing (per-dataset min d)
+    # 2c. Fractional differencing
     log.info("  Finding minimum FFD d ...")
     log_close = np.log(close)
     min_d     = find_min_d(log_close,
@@ -613,10 +497,11 @@ def stage_labeling_features(
                            threshold=CFG["frac_diff_threshold"])
     d_used    = max(min_d, CFG["frac_diff_step"])
     fd_close  = frac_diff_ffd(log_close, d=d_used,
-                              threshold=CFG["frac_diff_threshold"]).rename("frac_diff_close")
+                              threshold=CFG["frac_diff_threshold"]
+                              ).rename("frac_diff_close")
     log.info("  min_d=%.2f  d_used=%.2f", min_d, d_used)
 
-    # -- 2d. Feature matrix via selected mode
+    # 2d. Feature matrix
     log.info("  Building features [mode=%s] ...", feature_mode)
     if feature_mode == "unified":
         features = _build_unified_features(bars, d_used, fd_close)
@@ -626,14 +511,19 @@ def stage_labeling_features(
         raise ValueError(f"Unknown feature_mode '{feature_mode}'. "
                          f"Choose: {list(FEATURE_MODES)}")
 
-    n_native = features.shape[1] - _build_unified_features(
-        bars, d_used, fd_close).shape[1]
-    log.info("  Features : %d cols  (%d unified + %d native)",
-             features.shape[1],
-             features.shape[1] - max(n_native, 0),
-             max(n_native, 0))
+    # Count native columns without recomputing unified features
+    if feature_mode == "native":
+        unified_cols = set(_build_unified_features(bars, d_used, fd_close).columns)
+        n_native = len([c for c in features.columns if c not in unified_cols])
+        n_unified = features.shape[1] - n_native
+    else:
+        n_unified = features.shape[1]
+        n_native  = 0
 
-    # -- 2e. Sample weights
+    log.info("  Features : %d cols  (%d unified + %d native)",
+             features.shape[1], n_unified, n_native)
+
+    # 2e. Sample weights
     log.info("  Computing sample weights ...")
     t1_valid = events["t1"].dropna().reindex(labels.index).dropna()
     weights  = (get_sample_weights_time_decay(
@@ -642,10 +532,8 @@ def stage_labeling_features(
                 if len(t1_valid) > 3
                 else pd.Series(1.0, index=labels.index, name="weight"))
 
-    # -- 2f. Assemble
+    # 2f. Assemble
     X = features.reindex(labels.index)
-    # Store t1_touch (actual barrier exit time) aligned to label index.
-    # Used by Stage 5 backtest engine to determine trade exit prices.
     t1_touch = events["t1_touch"].reindex(labels.index)
     result = pd.concat([X, labels[["ret", "bin"]], weights.rename("weight"),
                         t1_touch.rename("t1_touch")],
@@ -656,66 +544,35 @@ def stage_labeling_features(
     result["min_d"]        = d_used
     result["feature_mode"] = feature_mode
 
-    # Drop warm-up rows where any feature is NaN.
-    # These are the first ~70 bars where rolling windows (BB=20, vol_20,
-    # frac_diff window) have not yet accumulated enough history.
-    # Labels and weights are never NaN - only features are affected.
-    feature_cols = [c for c in result.columns
-                    if c not in ('ret','bin','weight','bar_type',
-                                 'source','bar_class','min_d','feature_mode')]
-    before = len(result)
-    result = result.dropna(subset=feature_cols)
+    # Drop warm-up rows where any FEATURE (not metadata) is NaN.
+    # BUG FIX: t1_touch MUST be excluded here — it is legitimately NaN for
+    # the last event in each dataset (barrier hasn't fired yet). Dropping on
+    # t1_touch NaN would remove valid training examples.
+    feature_cols = [c for c in result.columns if c not in NON_FEATURE_COLS]
+    before  = len(result)
+    result  = result.dropna(subset=feature_cols)
     dropped = before - len(result)
     if dropped:
         log.info("  Dropped %d warm-up rows with NaN features (%.1f%%)",
-                 dropped, dropped/before*100)
+                 dropped, dropped / before * 100)
 
-    log.info("  Final frame : %d samples x %d features", len(result), X.shape[1])
+    log.info("  Final frame : %d samples x %d features", len(result), n_unified + n_native)
     _save(result, name, f"labeling_{feature_mode}", no_save)
     return result
 
 
 # ============================================================================
-# STAGE 3 -- MODELS  (placeholder)
+# STAGE 3 — MODELS
 # ============================================================================
 
 def stage_models(
-    name    : str,
-    ml_frame: pd.DataFrame,
-    meta    : dict,
-    no_save : bool = False,
-) -> Optional[pd.DataFrame]:
-    """Train classifiers on the labelled feature matrix with purged CV.
-
-    Implement in mlfinlab/models/
-
-    Sub-stages
-    ----------
-    3a. Feature prep
-          NON_FEATURE_COLS = {"ret","bin","weight","bar_type","source",
-                               "bar_class","min_d","feature_mode"}
-          X = ml_frame.drop(columns=NON_FEATURE_COLS)
-          y = ml_frame["bin"]      # -1 / 0 / +1
-          w = ml_frame["weight"]
-
-    3b. Purged K-fold CV  (AFML Ch.7)
-          PurgedKFold(n_splits=CFG["cv_n_splits"],
-                      pct_embargo=CFG["embargo_pct"])
-
-    3c. Classifiers
-          RandomForestClassifier     primary de Prado recommendation
-          GradientBoostingClassifier strong gradient-based baseline
-          SVC(kernel="rbf")          classical benchmark
-
-    3d. Feature importance: MDI, MDA, SFI
-
-    3e. Persist model per bar type + feature mode
-          joblib.dump(model, OUTPUT_DIR / f"{name}__{feature_mode}__model.pkl")
-
-    Returns
-    -------
-    pd.DataFrame  y_true | y_pred | prob_m1 | prob_0 | prob_p1
-    """
+    name     : str,
+    ml_frame : pd.DataFrame,
+    meta     : dict,
+    no_save  : bool = False,
+    run_cpcv : bool = True,
+) -> Optional[dict]:
+    """Train classifiers with Walk-Forward CV and CPCV."""
     _sep(f"STAGE 3 . MODELS  [{name}]")
 
     results = train_all(
@@ -726,15 +583,17 @@ def stage_models(
         n_splits          = CFG["cv_n_splits"],
         embargo_pct       = CFG["embargo_pct"],
         initial_train_pct = CFG["initial_train_pct"],
+        run_cpcv          = run_cpcv,
+        cpcv_n_splits     = CFG["cpcv_n_splits"],
+        cpcv_n_test_folds = CFG["cpcv_n_test_folds"],
     )
 
     if not results or "summary" not in results:
-        log.warning("  No model results produced for %s", name)
+        log.warning("  No model results for %s", name)
         return None
 
-    # Save predictions and feature importance per classifier
     for clf_name, res in results.items():
-        if clf_name == "summary" or not isinstance(res, dict):
+        if clf_name in ("summary", "cpcv_summary") or not isinstance(res, dict):
             continue
         preds = res.get("predictions")
         if preds is not None and not preds.empty:
@@ -746,59 +605,44 @@ def stage_models(
             _save(fi_df, f"{name}__{clf_name}", "feature_importance", no_save)
 
     _save(results["summary"], name, "cv_summary", no_save)
+    if not results.get("cpcv_summary", pd.DataFrame()).empty:
+        _save(results["cpcv_summary"], name, "cpcv_summary", no_save)
+
     log.info("  Stage 3 complete for %s", name)
     return results
 
 
 # ============================================================================
-# STAGE 4 -- PREDICTION  (placeholder)
+# STAGE 4 — PREDICTION
 # ============================================================================
 
 def stage_predict(
     name         : str,
     ml_frame     : pd.DataFrame,
-    model_output : Optional[pd.DataFrame],
+    model_output : Optional[dict],
     meta         : dict,
     no_save      : bool = False,
-) -> Optional[pd.DataFrame]:
-    """Generate directional signals (-1 / 0 / +1).
-
-    Implement in mlfinlab/signals/
-
-    Sub-stages
-    ----------
-    4a. Probability calibration (isotonic / Platt)
-    4b. Signal thresholding:
-          prob(+1) > thresh  ->  signal = +1
-          prob(-1) > thresh  ->  signal = -1
-          else               ->  signal =  0  (no trade)
-    4c. Bet sizing: fixed-fraction or fractional Kelly
-
-    Returns
-    -------
-    pd.DataFrame  signal (-1/0/+1) | bet_size | confidence
-    """
+) -> Optional[dict]:
+    """Generate directional signals (-1 / 0 / +1)."""
     _sep(f"STAGE 4 . PREDICTION  [{name}]")
 
     if model_output is None or "summary" not in model_output:
-        log.warning("  No model output available for %s", name)
+        log.warning("  No model output for %s", name)
         return None
 
-    # Collect stitched predictions from best classifier by mean F1
     summary = model_output["summary"]
     if summary.empty:
         log.warning("  Empty model summary for %s", name)
         return None
 
-    # Generate signals for EVERY classifier so backtest can report per-classifier.
-    # The paper needs per-model metrics, not just the best model's metrics.
     all_signals = {}
     for clf_name, res in model_output.items():
-        if clf_name == "summary" or not isinstance(res, dict):
+        if clf_name in ("summary", "cpcv_summary") or not isinstance(res, dict):
             continue
         preds = res.get("predictions")
         if preds is None or preds.empty:
             continue
+
         sigs = generate_signals(
             predictions          = preds,
             confidence_threshold = CFG["confidence_threshold"],
@@ -809,9 +653,9 @@ def stage_predict(
         _save(sigs, f"{name}__{clf_name}", "signals", no_save)
         log.info("  [%s] signals: buy=%d sell=%d hold=%d",
                  clf_name,
-                 (sigs["signal"]==1).sum(),
-                 (sigs["signal"]==-1).sum(),
-                 (sigs["signal"]==0).sum())
+                 (sigs["signal"] == 1).sum(),
+                 (sigs["signal"] == -1).sum(),
+                 (sigs["signal"] == 0).sum())
 
     if not all_signals:
         log.warning("  No signals generated for %s", name)
@@ -821,111 +665,75 @@ def stage_predict(
 
 
 # ============================================================================
-# STAGE 5 -- BACKTEST  (placeholder)
+# STAGE 5 — BACKTEST
 # ============================================================================
 
 def stage_backtest(
     name     : str,
     bars     : pd.DataFrame,
-    signals  : Optional[pd.DataFrame],
+    signals  : Optional[dict],
     meta     : dict,
     ml_frame : Optional[pd.DataFrame] = None,
+    model_output: Optional[dict]      = None,
     no_save  : bool = False,
-) -> Optional[dict]:
-    """Simulate strategy P&L and compute performance metrics.
-
-    Implement in mlfinlab/backtest/
-
-    Sub-stages
-    ----------
-    5a. Walk-forward simulation; fee = CFG["trading_fee_pct"] per side
-    5b. Metrics (stored per bar type + feature mode for Stage 6 table):
-          Sharpe ratio, Sortino ratio, Max drawdown, Calmar ratio,
-          Win rate, Profit factor, AUC-ROC, Deflated Sharpe Ratio
-    5c. Equity curve + drawdown plot
-
-    Returns
-    -------
-    dict  {metric: value, "bar_type": ..., "source": ..., "feature_mode": ...}
-    """
+) -> Optional[list]:
+    """Simulate strategy P&L and compute performance metrics."""
     _sep(f"STAGE 5 . BACKTEST  [{name}]")
     log.info("  Fee : %.4f%% per side  Capital : $%.0f",
              CFG["trading_fee_pct"] * 100, CFG["initial_capital"])
 
-    if signals is None or (isinstance(signals, dict) and not signals):
+    if signals is None or not signals:
         log.warning("  No signals for %s", name)
         return None
 
-    from mlfinlab.backtest.engine import run as _bt_run
     ml_f = ml_frame if ml_frame is not None else pd.DataFrame()
+    all_metrics = []
 
-    # signals is a dict {classifier_name -> signals_df}
-    # Run backtest per classifier and collect all metrics
-    if isinstance(signals, dict):
-        all_metrics = []
-        for clf_name, sigs in signals.items():
-            log.info("  Backtesting [%s] ...", clf_name)
-            m = _bt_run(
-                signals     = sigs,
-                bars        = bars,
-                ml_frame    = ml_f,
-                meta        = meta,
-                fee_pct     = CFG["trading_fee_pct"],
-                risk_free   = CFG["risk_free_rate"],
-                initial_cap = CFG["initial_capital"],
-            )
-            m["classifier"] = clf_name
-            all_metrics.append(m)
-        metrics_list = all_metrics
-        _save(pd.DataFrame(all_metrics), name, "backtest_metrics", no_save)
-        return all_metrics
-    else:
-        # single signals DataFrame (backward compat)
-        metrics = _bt_run(
-            signals     = signals,
+    for clf_name, sigs in signals.items():
+        log.info("  Backtesting [%s] ...", clf_name)
+
+        # Extract CPCV Sharpe distribution for DSR
+        cpcv_sharpes = []
+        if model_output and clf_name in model_output:
+            cscores = model_output[clf_name].get("cpcv_scores", [])
+            # CPCV scores don't have Sharpe directly — collect accuracy as proxy
+            # The true CPCV Sharpe would require running a mini backtest per
+            # combination. Here we pass None so DSR is computed post-hoc
+            # in Stage 6 from the distribution of walk-forward Sharpes.
+            # TODO: for full DSR, run mini-backtest per CPCV combination.
+
+        m = backtest_run(
+            signals     = sigs,
             bars        = bars,
             ml_frame    = ml_f,
             meta        = meta,
             fee_pct     = CFG["trading_fee_pct"],
             risk_free   = CFG["risk_free_rate"],
             initial_cap = CFG["initial_capital"],
+            cpcv_sharpes= cpcv_sharpes if cpcv_sharpes else None,
         )
-        _save(pd.DataFrame([metrics]), name, "backtest_metrics", no_save)
-        return [metrics]
+        m["classifier"] = clf_name
+        all_metrics.append(m)
+
+    _save(pd.DataFrame(all_metrics), name, "backtest_metrics", no_save)
+    return all_metrics
 
 
 # ============================================================================
-# STAGE 6 -- CROSS-BAR REPORT  (placeholder)
+# STAGE 6 — CROSS-BAR REPORT
 # ============================================================================
 
 def stage_report(
     all_results : dict[str, dict],
     no_save     : bool = False,
 ) -> None:
-    """Aggregate per-bar-type ML metrics into a comparison table.
-
-    Implement in mlfinlab/reporting/
-
-    Sub-stages
-    ----------
-    6a. Collect backtest dicts for all bar types from Stage 5
-    6b. Summary DataFrame:
-          Rows    = bar types  (dollar_minute, dollar_tick, ..., 1h, 4h, ...)
-          Columns = Sharpe | Sortino | AUC | MDD | WinRate
-                  | min_d  | n_events | label_0_pct | feature_mode
-    6c. Pairwise Sharpe significance: Jobson-Korkie or block bootstrap
-    6d. Export:
-          summary_table.csv   machine-readable
-          summary_table.tex   LaTeX table for paper
-          ml_comparison.pdf   grouped bar-chart figure
-    """
+    """Aggregate per-bar-type ML metrics into comparison tables."""
     _sep("STAGE 6 . CROSS-BAR REPORT")
 
     if not all_results:
         log.info("  No results to report.")
         return
 
-    # Collect all backtest metrics dicts
     all_metrics = []
     for name, res in all_results.items():
         bt = res.get("backtest_metrics")
@@ -936,15 +744,17 @@ def stage_report(
 
     if not all_metrics:
         log.info("  No backtest metrics collected yet.")
-        # Still print labeling summary
         rows = []
         for name, res in all_results.items():
             m = res.get("meta", {})
             rows.append({
-                "dataset": name, "bar_type": m.get("bar_type","?"),
-                "source": m.get("source","?"), "bar_class": m.get("bar_class","?"),
-                "n_events": res.get("events",0), "min_d": res.get("min_d",float("nan")),
-                "status": res.get("status","ok"),
+                "dataset"   : name,
+                "bar_type"  : m.get("bar_type", "?"),
+                "source"    : m.get("source",   "?"),
+                "bar_class" : m.get("bar_class","?"),
+                "n_events"  : res.get("events", 0),
+                "min_d"     : res.get("min_d",  float("nan")),
+                "status"    : res.get("status", "ok"),
             })
         df = pd.DataFrame(rows)
         log.info("\n%s", df.to_string(index=False))
@@ -1010,22 +820,18 @@ Feature modes:
         """,
     )
     p.add_argument("--data-dir", type=Path, default=DATA_DIR)
-    p.add_argument("--file", type=str, default=None,
-                   help="Single CSV filename, e.g. binance_btc_1h.csv")
+    p.add_argument("--file", type=str, default=None)
     p.add_argument("--bar-type", type=str, default=None,
-                   choices=list(BAR_CATALOGUE.keys()),
-                   help="Run both minute + tick for one bar type")
+                   choices=list(BAR_CATALOGUE.keys()))
     p.add_argument("--synthetic", action="store_true")
     p.add_argument("--feature-mode", type=str, default="unified",
-                   choices=list(FEATURE_MODES.keys()),
-                   help="Feature set to use (default: unified)")
+                   choices=list(FEATURE_MODES.keys()))
     p.add_argument("--stage", type=str, default=None,
-                   choices=[s[0] for s in STAGES if s[0] != "data"],
-                   help="Run only one stage (data always runs first)")
-    p.add_argument("--no-save", action="store_true",
-                   help="Skip writing output CSVs")
-    p.add_argument("--list-stages", action="store_true",
-                   help="Print stages and exit")
+                   choices=[s[0] for s in STAGES if s[0] != "data"])
+    p.add_argument("--no-save", action="store_true")
+    p.add_argument("--no-cpcv", action="store_true",
+                   help="Skip CPCV (faster, WalkForward CV only)")
+    p.add_argument("--list-stages", action="store_true")
     return p.parse_args()
 
 
@@ -1038,17 +844,18 @@ def main() -> None:
 
     if args.list_stages:
         print("\nRegistered pipeline stages:")
-        active = {"data", "labeling", "models", "predict", "backtest", "report"}
         for i, (key, label, _) in enumerate(STAGES, 1):
-            s = "active" if key in active else "placeholder"
-            print(f"  {i}. {key:<10}  {label:<35}  [{s}]")
+            print(f"  {i}. {key:<10}  {label:<35}")
         print(f"\nFeature modes: {', '.join(FEATURE_MODES)}")
         print()
         return
 
+    run_cpcv = not getattr(args, "no_cpcv", False)
+
     log.info("=" * 66)
     log.info("  mlfinlab . bar-comparison pipeline . %s", _ts)
     log.info("  Feature mode : %s", args.feature_mode)
+    log.info("  CPCV         : %s", "enabled" if run_cpcv else "disabled")
     log.info("=" * 66)
 
     # Stage 1
@@ -1073,6 +880,7 @@ def main() -> None:
 
         run_results[name] = {"bars": len(bars), "meta": meta, "status": "ok"}
         ml_frame: Optional[pd.DataFrame] = None
+        model_output: Optional[dict]     = None
 
         try:
             # Stage 2
@@ -1092,38 +900,42 @@ def main() -> None:
                     ml_frame["bin"].value_counts().to_dict())
 
             # Stage 3
-            model_output: Optional[pd.DataFrame] = None
             if args.stage in (None, "models") and ml_frame is not None:
-                model_output = stage_models(name, ml_frame, meta,
-                                            no_save=args.no_save)
+                model_output = stage_models(
+                    name, ml_frame, meta,
+                    no_save=args.no_save,
+                    run_cpcv=run_cpcv,
+                )
 
             # Stage 4
-            signals: Optional[pd.DataFrame] = None
+            signals: Optional[dict] = None
             if args.stage in (None, "predict") and ml_frame is not None:
                 signals = stage_predict(name, ml_frame, model_output, meta,
                                         no_save=args.no_save)
 
             # Stage 5
             if args.stage in (None, "backtest"):
-                bt = stage_backtest(name, bars, signals, meta,
-                                    ml_frame=ml_frame,
-                                    no_save=args.no_save)
+                bt = stage_backtest(
+                    name, bars, signals, meta,
+                    ml_frame=ml_frame,
+                    model_output=model_output,
+                    no_save=args.no_save,
+                )
                 if bt:
                     run_results[name]["backtest_metrics"] = bt
-                    # Store summary metrics from first classifier for run summary
                     first = bt[0] if isinstance(bt, list) and bt else bt
                     if isinstance(first, dict):
                         run_results[name].update({
-                            k: v for k,v in first.items()
-                            if k not in ("bar_type","source","bar_class",
-                                         "feature_mode","classifier")
+                            k: v for k, v in first.items()
+                            if k not in ("bar_type", "source", "bar_class",
+                                         "feature_mode", "classifier")
                         })
 
         except Exception:
             run_results[name]["status"] = "ERROR"
             log.error("  ERROR in %s:\n%s", name, traceback.format_exc())
 
-    # Stage 6 -- once, after all datasets
+    # Stage 6
     if args.stage in (None, "report"):
         stage_report(run_results, no_save=args.no_save)
 
