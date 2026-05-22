@@ -369,7 +369,7 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
 
     extreme_threshold = target_volume * VOLUME_EXTREME_THRESHOLD_MULTIPLIER
 
-    del cal_p, cal_q, cal_ts_ms
+    del cal_p, cal_q, cal_ts_ms; gc.collect()
 
     logger.info(
         "  Volume calibration done — target=%.4f BTC  bars/day=%.1f  "

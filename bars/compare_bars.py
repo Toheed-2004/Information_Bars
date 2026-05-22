@@ -2685,6 +2685,7 @@ def _run_one(
     panels: str | None = None,
     figures: str | None = None,
 ) -> None:
+    from datetime import datetime,timezone
     min_file, tick_file, label_a, label_b = BAR_TYPES[bar_type]
     csv_a = data_dir / min_file
     csv_b = data_dir / tick_file
@@ -2704,6 +2705,20 @@ def _run_one(
     print("\nLoading bar data ...")
     a = load_bars(str(csv_a), label_a)
     b = load_bars(str(csv_b), label_b)
+    # After loading both dataframes
+    # start = max(a["datetime"].min(), b["datetime"].min())
+    start=datetime(2020,1,1,tzinfo=timezone.utc)
+    end=datetime(2021,12,31,tzinfo=timezone.utc)
+    # end   = min(a["datetime"].max(), b["datetime"].max())
+
+    a = a[(a["datetime"] >= start) & (a["datetime"] <= end)]
+    b = b[(b["datetime"] >= start) & (b["datetime"] <= end)]
+
+    print(a.tail())
+    print(b.tail())
+    # print(b.head())
+    
+
 
     # ── Optional: load closest-matching time bar ──────────────────────────────
     c = tc = comp_ac = comp_bc = None

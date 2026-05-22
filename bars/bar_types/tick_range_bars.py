@@ -396,7 +396,7 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
     log_ret    = _tick_log_returns(prices_f64)
     if len(log_ret) < 100:
         logger.warning("  Insufficient log-returns — using defaults")
-        del cal_p, cal_q, cal_ts_ms
+        del cal_p, cal_q, cal_ts_ms; gc.collect()
         return bar_processor._get_default_params()
 
     # ── information multiplier ────────────────────────────────────────────────
@@ -454,7 +454,7 @@ def calibrate(bar_processor, csv_path: Path, gather_fn: Callable) -> dict:
         TICK_MAX_DURATION_FLOOR_SECONDS, TICK_MAX_DURATION_SECONDS,
         DURATION_ESTIMATED_MULTIPLIER)
 
-    del cal_p, cal_q, cal_ts_ms
+    del cal_p, cal_q, cal_ts_ms; gc.collect()
 
     logger.info(
         "  Range calibration done — tick_target=%.6f (%.4f%%)  "

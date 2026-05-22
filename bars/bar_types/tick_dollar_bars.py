@@ -736,6 +736,7 @@ def calibrate(
     )
     market_params = bar_processor.analyze_from_dataframe(df)
     del df, cal_p, cal_q, cal_ts_ms, cal_ibm
+    gc.collect()
 
     logger.info(
         "  Dollar calibration done — target=$%.0f  bars/day=%.1f  tier=%s  alpha=%.3f",
